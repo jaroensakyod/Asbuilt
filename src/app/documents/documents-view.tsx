@@ -18,21 +18,17 @@ import {
   type DocFileType,
   type DocItem,
 } from "@/lib/docs-data";
-import { createLocalStore, useLocalProjects } from "@/lib/projects-store";
+import { useLocalProjects } from "@/lib/projects-store";
+import { isLiveReady, workspace } from "@/lib/workspace";
+import { signedDocUrl, uploadDocFile, useSignedDocUrl, type StoredDoc } from "@/lib/doc-files";
 import { coverSvg, svgDataUrl } from "./cover";
 
-// ---------- browser stores ----------
-
-type Override = { title?: string; category?: DocCategory; tags?: string[] };
-const NO_UPLOADS: DocItem[] = [];
-const NO_OVERRIDES: Record<string, Override> = {};
-const uploads = createLocalStore<DocItem[]>("asbuilt.docs.uploads.v1", NO_UPLOADS);
-const overrides = createLocalStore<Record<string, Override>>("asbuilt.docs.overrides.v1", NO_OVERRIDES);
+import { uploads, overrides, type Override } from "@/lib/docs-store";
 
 /** Object URLs for files picked in this tab; gone after a reload, metadata stays */
 const sessionUrls = new Map<string, string>();
 
-const UPLOADER = team[0]?.name ?? "ผู้ดูแลระบบ";
+const uploader = () => (isLiveReady() ? workspace().displayName : undefined) ?? team[0]?.name ?? "ผู้ดูแลระบบ";
 const PAGE = 60;
 
 function initials(name: string) {
@@ -200,9 +196,13 @@ export function DocumentsView() {
 
   const projectLabel = (id: string) => projectById.get(id)?.name ?? id;
 
-  const downloadDoc = (d: DocItem) => {
+  const downloadDoc = async (d: DocItem) => {
     const url = sessionUrls.get(d.id);
     if (url) return download(url, d.file);
+    if ((d as StoredDoc).storagePath) {
+      const signed = await signedDocUrl(d as StoredDoc, true);
+      if (signed) return download(signed, d.file);
+    }
     if (d.local) return setPreviewId(d.id);
     const svg = coverSvg(d, projectLabel(d.projectId), COMPANY_INFO.name);
     const blob = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
@@ -231,7 +231,7 @@ export function DocumentsView() {
         type: t,
         projectId: pending.project,
         sizeKb: Math.max(1, Math.round(f.size / 1024)),
-        by: UPLOADER,
+        by: uploader(),
         date: TODAY,
         tags: [DOC_CATEGORY_LABEL[pending.category], "อัปโหลด"],
         local: true,
@@ -239,6 +239,10 @@ export function DocumentsView() {
       };
     });
     uploads.set((prev) => [...items, ...prev]);
+    if (isLiveReady())
+      pending.files.forEach((f, i) => {
+        void uploadDocFile(items[i], f).then((stored) => stored && uploads.set((prev) => prev.map((d) => (d.id === stored.id ? stored : d))));
+      });
     setPending(null);
     if (fileRef.current) fileRef.current.value = "";
     setPreviewId(items[0]?.id ?? null);
@@ -573,9 +577,10 @@ function PreviewPanel({
   onEdit: () => void;
   onRemove?: () => void;
 }) {
-  const url = sessionUrls.get(doc.id);
+  const signed = useSignedDocUrl(doc as StoredDoc);
+  const url = sessionUrls.get(doc.id) ?? signed ?? undefined;
   let body: ReactNode;
-  if (doc.local) {
+  if (doc.local || (doc as StoredDoc).storagePath) {
     if (!url) body = <Empty text="ตัวอย่างไฟล์ดูได้เฉพาะในเซสชันที่อัปโหลด ข้อมูลไฟล์ยังเก็บไว้ อัปโหลดใหม่เพื่อดูตัวอย่าง" />;
     else if (doc.type === "pdf") body = <iframe src={url} title={doc.title} className="h-full min-h-[60vh] w-full rounded-[8px] border border-line bg-card" />;
     else if (doc.type === "image" || doc.type === "svg")
@@ -623,7 +628,7 @@ function PreviewPanel({
         <footer className="flex items-center gap-2 border-t border-line px-5 py-3">
           <button type="button" className={btnPrimary} onClick={onDownload}>
             <Download size={16} strokeWidth={1.5} />
-            {doc.local || sessionUrls.has(doc.id) ? "ดาวน์โหลด" : "ดาวน์โหลดปกเอกสาร"}
+            {doc.local || sessionUrls.has(doc.id) || (doc as StoredDoc).storagePath ? "ดาวน์โหลด" : "ดาวน์โหลดปกเอกสาร"}
           </button>
           <button type="button" className={btnGhost} onClick={onEdit}>
             <Pencil size={16} strokeWidth={1.5} />

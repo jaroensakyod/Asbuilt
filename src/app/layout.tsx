@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
-import { Sidebar } from "@/components/shell/sidebar";
-import { CommandPalette } from "@/components/shell/command-palette";
+import { Suspense } from "react";
+import { AppFrame } from "@/components/shell/app-frame";
 import "./globals.css";
 
 const plexThai = IBM_Plex_Sans_Thai({
@@ -25,11 +25,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="th" className={`${plexThai.variable} ${plexMono.variable} h-full antialiased`}>
       <body className="min-h-full">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <div className="min-w-0 flex-1">{children}</div>
-        </div>
-        <CommandPalette />
+        <Suspense fallback={null}>
+          <AppFrame>{children}</AppFrame>
+        </Suspense>
       </body>
     </html>
   );

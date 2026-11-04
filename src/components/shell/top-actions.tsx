@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Bell, ChevronDown, Search, LogOut, Settings, UserRound } from "lucide-react";
 import { cx, Keycap } from "@/components/ui";
 import { openSearch } from "./sidebar";
+import { useMe } from "@/lib/use-me";
+import { signOut, switchCompany } from "@/lib/workspace";
 import { TODAY, getProject, slaText } from "@/lib/data";
 import { useInspections, useMaintenance, useRepairs, maintState } from "@/lib/ops-store";
 
@@ -43,6 +45,7 @@ export function TopActions() {
   useOutside(bellRef, () => setBell(false));
   useOutside(menuRef, () => setMenu(false));
   const list = useNotes();
+  const me = useMe();
   const unread = list.filter((n) => !read.includes(n.id)).length;
 
   return (
@@ -102,16 +105,39 @@ export function TopActions() {
 
       <div ref={menuRef} className="relative">
         <button type="button" onClick={() => setMenu((v) => !v)} className="flex h-9 items-center gap-2 rounded-[8px] pl-1 pr-2 transition-colors duration-150 hover:bg-raised" aria-expanded={menu}>
-          <span className="flex size-7 items-center justify-center rounded-full bg-raised text-[12px] text-ink-2">ศพ</span>
-          <span className="hidden text-[14px] xl:inline">ศิริพร</span>
+          <span className="flex size-7 items-center justify-center rounded-full bg-raised text-[12px] text-ink-2">{me.initials}</span>
+          <span className="hidden max-w-[140px] truncate text-[14px] xl:inline">{me.name.split(" ")[0]}</span>
           <ChevronDown size={14} strokeWidth={1.5} className="text-ink-3" />
         </button>
         {menu && (
           <div className="enter absolute right-0 top-11 w-[240px] overflow-hidden rounded-[12px] border border-line-strong bg-card p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
             <div className="px-3 py-2.5">
-              <p>ศิริพร ตั้งเจริญ</p>
-              <p className="text-[12px] text-ink-3">ผู้จัดการโครงการ · siriporn@example.co.th</p>
+              <p className="truncate">{me.name}</p>
+              <p className="truncate text-[12px] text-ink-3">
+                {me.roleLabel} · {me.email}
+              </p>
+              <p className="mt-1 truncate text-[12px] text-ink-2">{me.company}</p>
             </div>
+            {me.companies.length > 1 && (
+              <>
+                <div className="my-1 h-px bg-line" />
+                <p className="px-3 pb-1 pt-1.5 text-[12px] text-ink-3">สลับบริษัท</p>
+                {me.companies.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setMenu(false);
+                      if (c.id !== me.companyId) void switchCompany(c.id);
+                    }}
+                    className="flex h-9 w-full items-center justify-between gap-2 rounded-[8px] px-3 text-left text-ink-2 transition-colors duration-150 hover:bg-raised hover:text-ink"
+                  >
+                    <span className="truncate">{c.name}</span>
+                    {c.id === me.companyId && <span className="size-1.5 rounded-full bg-accent" />}
+                  </button>
+                ))}
+              </>
+            )}
             <div className="my-1 h-px bg-line" />
             {[
               { icon: UserRound, label: "โปรไฟล์ของฉัน", href: "/team" },
@@ -122,7 +148,12 @@ export function TopActions() {
                 {m.label}
               </Link>
             ))}
-            <button type="button" className="flex h-9 w-full items-center gap-2.5 rounded-[8px] px-3 text-ink-2 transition-colors duration-150 hover:bg-raised hover:text-ink">
+            <button
+              type="button"
+              onClick={() => (me.live ? void signOut() : setMenu(false))}
+              title={me.live ? undefined : "โหมดเดโมไม่มีการล็อกอิน"}
+              className="flex h-9 w-full items-center gap-2.5 rounded-[8px] px-3 text-ink-2 transition-colors duration-150 hover:bg-raised hover:text-ink"
+            >
               <LogOut size={16} strokeWidth={1.5} />
               ออกจากระบบ
             </button>

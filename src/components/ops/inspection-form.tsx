@@ -1,5 +1,6 @@
 "use client";
 
+import { onTenantLoad } from "@/lib/workspace";
 import { useState } from "react";
 import { Field, cx, inputCls } from "@/components/ui";
 import { checklists, projects, SYSTEM_LABEL, team, TODAY, type SystemKey } from "@/lib/data";
@@ -7,20 +8,27 @@ import { addInspection, updateInspection, type OpsInspection } from "@/lib/ops-s
 import { PHASES, PHASE_SYSTEMS } from "./seed";
 import { Btn, Modal } from "./bits";
 
-export const INSPECTORS = team.filter((m) => m.active && (m.role === "qc" || m.role === "engineer" || m.role === "pm" || m.role === "foreman")).map((m) => m.name);
-const PROJECTS = projects.filter((p) => p.status !== "planning");
+// live arrays: refilled when a company is loaded
+export const INSPECTORS: string[] = [];
+const PROJECTS: typeof projects = [];
+const fillLists = () => {
+  INSPECTORS.splice(0, INSPECTORS.length, ...team.filter((m) => m.active && (m.role === "qc" || m.role === "engineer" || m.role === "pm" || m.role === "foreman" || m.role === "admin")).map((m) => m.name));
+  PROJECTS.splice(0, PROJECTS.length, ...projects.filter((p) => p.status !== "planning"));
+};
+fillLists();
+onTenantLoad(fillLists);
 
 export function InspectionForm({ open, onClose, edit, onSaved }: { open: boolean; onClose: () => void; edit?: OpsInspection; onSaved?: (ins: OpsInspection) => void }) {
   return open ? <FormBody key={edit?.id ?? "new"} onClose={onClose} edit={edit} onSaved={onSaved} /> : null;
 }
 
 function FormBody({ onClose, edit, onSaved }: { onClose: () => void; edit?: OpsInspection; onSaved?: (ins: OpsInspection) => void }) {
-  const [projectId, setProjectId] = useState(edit?.projectId ?? PROJECTS[0].id);
-  const [phase, setPhase] = useState(edit?.phase ?? (PHASES.includes(PROJECTS[0].phase) ? PROJECTS[0].phase : PHASES[0]));
+  const [projectId, setProjectId] = useState(edit?.projectId ?? PROJECTS[0]?.id ?? "");
+  const [phase, setPhase] = useState(edit?.phase ?? (PROJECTS[0] && PHASES.includes(PROJECTS[0].phase) ? PROJECTS[0].phase : PHASES[0]));
   const [title, setTitle] = useState(edit?.title ?? "");
   const [systems, setSystems] = useState<SystemKey[]>(() => edit?.systems ?? PHASE_SYSTEMS[phase] ?? []);
   const [location, setLocation] = useState(edit?.location ?? "ชั้น 1");
-  const [inspector, setInspector] = useState(edit?.inspector ?? INSPECTORS[0]);
+  const [inspector, setInspector] = useState(edit?.inspector ?? INSPECTORS[0] ?? "");
   const [date, setDate] = useState(edit?.date ?? TODAY);
   const [time, setTime] = useState(edit?.time ?? "09:00");
   const project = projects.find((p) => p.id === projectId);

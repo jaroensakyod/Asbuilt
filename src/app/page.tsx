@@ -1,3 +1,6 @@
+"use client";
+
+// Client page: in live mode it renders the signed-in company's data.
 import Link from "next/link";
 import { ArrowRight, Box, MapPin, Plus, TriangleAlert, UserRound } from "lucide-react";
 import { Page } from "@/components/shell/topbar";

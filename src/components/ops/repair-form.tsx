@@ -1,5 +1,6 @@
 "use client";
 
+import { onTenantLoad } from "@/lib/workspace";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { AssetTag, Field, cx, inputCls } from "@/components/ui";
@@ -9,8 +10,18 @@ import { addRepair, createWorkOrderFromRepair, type OpsRepair, type OpsWorkOrder
 import { assetLocation, ownerShort, projectAssets, SLA_HOURS, TECH_BY_SYSTEM } from "./seed";
 import { areaCls, Btn, I, Modal } from "./bits";
 
-export const TECHNICIANS = team.filter((m) => m.role === "technician" && m.active).map((m) => m.name);
-export const ASSIGNEES = [...TECHNICIANS, ...team.filter((m) => m.active && (m.role === "foreman" || m.role === "engineer")).map((m) => m.name)];
+// live arrays: refilled when a company is loaded
+export const TECHNICIANS: string[] = [];
+export const ASSIGNEES: string[] = [];
+const fillPeople = () => {
+  TECHNICIANS.splice(0, TECHNICIANS.length, ...team.filter((m) => m.role === "technician" && m.active).map((m) => m.name));
+  const others = team.filter((m) => m.active && (m.role === "foreman" || m.role === "engineer" || m.role === "pm" || m.role === "admin")).map((m) => m.name);
+  ASSIGNEES.splice(0, ASSIGNEES.length, ...new Set([...TECHNICIANS, ...others]));
+  // a company with no technicians yet can still assign work to anyone on the team
+  if (!TECHNICIANS.length) TECHNICIANS.push(...ASSIGNEES);
+};
+fillPeople();
+onTenantLoad(fillPeople);
 
 export type RepairPreset = { asset?: string; project?: string };
 
@@ -31,7 +42,7 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
   const [severity, setSeverity] = useState<Severity>("medium");
   const [source, setSource] = useState<RepairSource>(project?.status === "delivered" ? "customer" : "internal");
   const [reporter, setReporter] = useState(ownerShort(initialProject));
-  const [assignee, setAssignee] = useState(asset ? TECH_BY_SYSTEM[asset.system] : TECHNICIANS[0]);
+  const [assignee, setAssignee] = useState(asset ? TECH_BY_SYSTEM[asset.system] : TECHNICIANS[0] ?? "");
   const [withWo, setWithWo] = useState(false);
 
   const found = useMemo(() => {

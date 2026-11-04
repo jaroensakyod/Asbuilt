@@ -201,14 +201,14 @@ function CreateFromRepair({ onClose, onCreated }: { onClose: () => void; onCreat
   const candidates = repairs.filter((r) => r.status !== "closed" && !wos.some((w) => w.repairId === r.id && w.status !== "cancelled"));
   const [repairId, setRepairId] = useState(candidates[0]?.id ?? "");
   const r = candidates.find((x) => x.id === repairId);
-  const [technician, setTechnician] = useState(r?.assignee ?? TECHNICIANS[0]);
+  const [technician, setTechnician] = useState(r?.assignee ?? TECHNICIANS[0] ?? "");
   const [scheduled, setScheduled] = useState(addDays(TODAY, 1));
   const [billing, setBilling] = useState<OpsWorkOrder["billing"]>(r?.source === "customer" ? "charge" : "warranty");
   const choose = (id: string) => {
     setRepairId(id);
     const x = candidates.find((c) => c.id === id);
     if (x) {
-      setTechnician(TECHNICIANS.includes(x.assignee) ? x.assignee : TECHNICIANS[0]);
+      setTechnician(TECHNICIANS.includes(x.assignee) ? x.assignee : TECHNICIANS[0] ?? "");
       setBilling(x.source === "customer" ? "charge" : "warranty");
     }
   };

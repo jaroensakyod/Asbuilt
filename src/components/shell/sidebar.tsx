@@ -29,6 +29,7 @@ import {
 import { cx, Keycap } from "@/components/ui";
 import { COMPANY_INFO } from "@/lib/data";
 import { useRepairs } from "@/lib/ops-store";
+import { useMe } from "@/lib/use-me";
 
 type Item = { href: string; label: string; icon: typeof LayoutGrid; count?: number; exact?: boolean };
 
@@ -88,6 +89,7 @@ export function Sidebar() {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const openRepairs = useRepairs().filter((r) => r.status !== "closed").length;
+  const me = useMe();
 
   useEffect(() => {
     const saved = window.localStorage.getItem("asbuilt:nav");
@@ -188,11 +190,11 @@ export function Sidebar() {
       )}
 
       <div className={cx("flex items-center border-t border-line py-3", collapsed ? "flex-col gap-2 px-2" : "gap-3 px-4")}>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-card text-[13px] text-ink-2 shadow-[inset_0_0_0_1px_var(--line-strong)]">ศพ</span>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-card text-[13px] text-ink-2 shadow-[inset_0_0_0_1px_var(--line-strong)]">{me.initials}</span>
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-[14px]">ศิริพร ตั้งเจริญ</p>
-            <p className="truncate text-[12px] text-ink-3">ผู้จัดการโครงการ</p>
+            <p className="truncate text-[14px]">{me.name}</p>
+            <p className="truncate text-[12px] text-ink-3">{me.roleLabel}</p>
           </div>
         )}
         <button type="button" onClick={toggle} aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"} className="rounded-[6px] p-1.5 text-ink-3 transition-colors duration-150 hover:bg-card hover:text-ink">

@@ -1,3 +1,6 @@
+"use client";
+
+// Client page: in live mode it renders the signed-in company's data.
 import { Page } from "@/components/shell/topbar";
 import { PageHeader } from "@/components/ui";
 import { team } from "@/lib/data";

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Search, UserPlus, X } from "lucide-react";
+import { Link2, Search, UserPlus, X } from "lucide-react";
 import { Card, CardHead, cx, Field, inputCls, Status } from "@/components/ui";
 import { ROLE_LABEL, team, thDate, TODAY, daysBetween, type Role } from "@/lib/data";
-import { invites, SEATS } from "./team-store";
+import { invites, inviteLink, SEATS } from "./team-store";
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
 
@@ -23,7 +23,7 @@ function lastActive(iso: string) {
   return thDate(iso);
 }
 
-type Row = { id: string; name: string; role: Role; skill?: string; phone: string; email: string; state: "active" | "inactive" | "invited"; last: string; invite?: boolean };
+type Row = { id: string; name: string; role: Role; skill?: string; phone: string; email: string; state: "active" | "inactive" | "invited"; last: string; invite?: boolean ; token?: string };
 
 export function TeamView() {
   const local = invites.use();
@@ -34,7 +34,7 @@ export function TeamView() {
 
   const rows: Row[] = useMemo(
     () => [
-      ...local.map<Row>((i) => ({ id: i.id, name: i.name, role: i.role, skill: i.skill, phone: i.phone, email: i.email, state: "invited", last: i.invited, invite: true })),
+      ...local.map<Row>((i) => ({ id: i.id, name: i.name, role: i.role, skill: i.skill, phone: i.phone, email: i.email, state: "invited", last: i.invited, invite: true, token: i.token })),
       ...team.map<Row>((m) => ({ id: m.id, name: m.name, role: m.role, skill: m.skill, phone: m.phone, email: m.email, state: m.active ? "active" : "inactive", last: m.lastSeen })),
     ],
     [local],
@@ -179,6 +179,17 @@ export function TeamView() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-ink-3">{r.invite ? `เชิญ ${thDate(r.last)}` : lastActive(r.last)}</td>
                 <td className="px-3 py-2.5">
+                  {r.invite && r.token && (
+                    <button
+                      type="button"
+                      title="คัดลอกลิงก์เชิญ"
+                      aria-label={`คัดลอกลิงก์เชิญ ${r.name}`}
+                      onClick={() => void navigator.clipboard.writeText(inviteLink(r.token!))}
+                      className="mr-1 inline-flex size-7 items-center justify-center rounded-[6px] text-ink-3 transition-colors duration-150 hover:bg-raised hover:text-ink"
+                    >
+                      <Link2 size={16} strokeWidth={1.5} />
+                    </button>
+                  )}
                   {r.invite && (
                     <button
                       type="button"
