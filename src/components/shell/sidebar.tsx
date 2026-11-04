@@ -25,11 +25,25 @@ import {
   Phone,
   PanelLeftClose,
   PanelLeftOpen,
+  Gauge,
+  Handshake,
+  FileSignature,
+  Calculator,
+  Tags,
+  ShoppingCart,
+  Truck,
+  Warehouse,
+  PiggyBank,
+  BookOpen,
+  IdCard,
+  Wallet,
+  CreditCard,
 } from "lucide-react";
 import { cx, Keycap } from "@/components/ui";
 import { COMPANY_INFO } from "@/lib/data";
 import { useRepairs } from "@/lib/ops-store";
 import { useMe } from "@/lib/use-me";
+import { canView, moduleOfPath } from "@/lib/permissions";
 
 type Item = { href: string; label: string; icon: typeof LayoutGrid; count?: number; exact?: boolean };
 
@@ -38,8 +52,18 @@ export const NAV: { label: string; items: Item[] }[] = [
     label: "ภาพรวม",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutGrid, exact: true },
+      { href: "/executive", label: "ผู้บริหาร", icon: Gauge },
       { href: "/projects", label: "โครงการ", icon: Building2 },
       { href: "/models", label: "แบบบ้าน", icon: Home },
+    ],
+  },
+  {
+    label: "การขาย",
+    items: [
+      { href: "/sales", label: "ลูกค้า & ลีด", icon: Handshake },
+      { href: "/quotes", label: "ใบเสนอราคา", icon: FileSignature },
+      { href: "/estimating", label: "ประเมินราคา & BOQ", icon: Calculator },
+      { href: "/prices", label: "ราคาวัสดุตลาด", icon: Tags },
     ],
   },
   {
@@ -69,6 +93,24 @@ export const NAV: { label: string; items: Item[] }[] = [
     ],
   },
   {
+    label: "จัดซื้อ & ต้นทุน",
+    items: [
+      { href: "/purchasing", label: "จัดซื้อ (PR/PO)", icon: ShoppingCart },
+      { href: "/suppliers", label: "ซัพพลายเออร์", icon: Truck },
+      { href: "/inventory", label: "คลังวัสดุ", icon: Warehouse },
+      { href: "/costs", label: "ต้นทุนโครงการ", icon: PiggyBank },
+    ],
+  },
+  {
+    label: "บัญชี & บุคคล",
+    items: [
+      { href: "/accounting", label: "บัญชี & ภาษี", icon: BookOpen },
+      { href: "/hr", label: "พนักงาน", icon: IdCard },
+      { href: "/hr/attendance", label: "ลงเวลา & การลา", icon: CalendarClock },
+      { href: "/hr/payroll", label: "เงินเดือน & ค่าแรง", icon: Wallet },
+    ],
+  },
+  {
     label: "ข้อมูล",
     items: [
       { href: "/reports", label: "รายงาน", icon: BarChart3 },
@@ -77,7 +119,10 @@ export const NAV: { label: string; items: Item[] }[] = [
   },
   {
     label: "ผู้ดูแลระบบ",
-    items: [{ href: "/team", label: "ผู้ใช้/ทีมงาน", icon: Users }],
+    items: [
+      { href: "/team", label: "ผู้ใช้/ทีมงาน", icon: Users },
+      { href: "/billing", label: "แพ็กเกจ & การชำระเงิน", icon: CreditCard },
+    ],
   },
 ];
 
@@ -106,7 +151,12 @@ export function Sidebar() {
     });
   };
 
-  const isActive = (it: Item) => (it.exact ? path === it.href : path === it.href || path.startsWith(it.href + "/"));
+  const isActive = (it: Item) => {
+    if (it.exact) return path === it.href;
+    const hit = path === it.href || path.startsWith(it.href + "/");
+    // a more specific sibling (e.g. /hr/payroll under /hr) wins
+    return hit && !NAV.some((g) => g.items.some((o) => o.href !== it.href && o.href.startsWith(it.href + "/") && (path === o.href || path.startsWith(o.href + "/"))));
+  };
 
   return (
     <aside data-shell className={cx("sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-line bg-deep transition-[width] duration-200", collapsed ? "w-[60px]" : "w-[248px]")}>
@@ -145,7 +195,7 @@ export function Sidebar() {
       </div>
 
       <nav className={cx("flex-1 overflow-y-auto pb-4", collapsed ? "px-2" : "px-3")}>
-        {NAV.map((g) => (
+        {NAV.map((g) => ({ ...g, items: g.items.filter((it) => { const m = moduleOfPath(it.href); return !m || canView(me.role, m); }) })).filter((g) => g.items.length).map((g) => (
           <div key={g.label} className="mt-4">
             {collapsed ? <div className="mx-2 mb-2 h-px bg-line" /> : <p className="mb-1.5 px-2 text-[12px] text-ink-3">{g.label}</p>}
             <ul className="flex flex-col gap-0.5">

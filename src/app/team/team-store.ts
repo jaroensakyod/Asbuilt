@@ -92,4 +92,5 @@ export function applyCompanySettings() {
 }
 if (typeof window !== "undefined") companyOverrides.subscribe(applyCompanySettings);
 
-export const SEATS = 25;
+// seat limit of the current SaaS plan
+export { seatLimit } from "@/lib/billing";

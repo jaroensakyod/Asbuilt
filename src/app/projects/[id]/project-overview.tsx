@@ -7,6 +7,7 @@ import { ArrowRight, Box, Download, FileText, Package, PencilRuler, Map as MapIc
 import { Card, CardHead, cx, PlanBar, Status } from "@/components/ui";
 import { HouseThumb } from "@/components/house-thumb";
 import { HousePreview } from "@/components/viewer/house-preview";
+import { PortalLinkCard } from "@/components/portal/portal-link-card";
 import { baht, phaseSegments, STATUS_TEXT, STATUS_TONE } from "@/components/dashboard/metrics";
 import { PhaseBar } from "@/components/dashboard/phase-bar";
 import {
@@ -265,6 +266,8 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
                 <HousePreview code={p.modelCode} pins={openRep.map((r) => r.asset)} />
               </div>
             </Card>
+
+            <PortalLinkCard projectId={p.id} />
 
             {model && (
               <Card>

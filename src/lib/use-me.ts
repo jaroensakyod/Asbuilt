@@ -1,9 +1,36 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ROLE_LABEL, COMPANY_INFO, type Role } from "./data";
 import { useWorkspace } from "./workspace";
 
-const DEMO_ME = { name: "ศิริพร ตั้งเจริญ", email: "siriporn@example.co.th", role: "pm" as Role };
+const DEMO_ME = { name: "ศิริพร ตั้งเจริญ", email: "siriporn@example.co.th" };
+
+// demo mode: which role to preview the app as (menu "ดูในบทบาท")
+const ROLE_KEY = "asbuilt:demoRole";
+const roleListeners = new Set<() => void>();
+const readRole = (): Role => {
+  if (typeof window === "undefined") return "admin";
+  const r = window.localStorage.getItem(ROLE_KEY) as Role | null;
+  return r && r in ROLE_LABEL ? r : "admin";
+};
+export function setDemoRole(r: Role) {
+  window.localStorage.setItem(ROLE_KEY, r);
+  roleListeners.forEach((l) => l());
+}
+function useDemoRole(): Role {
+  // server and first client render use "admin"; the saved role is applied right after mount
+  const [role, setRole] = useState<Role>("admin");
+  useEffect(() => {
+    const sync = () => setRole(readRole());
+    sync();
+    roleListeners.add(sync);
+    return () => {
+      roleListeners.delete(sync);
+    };
+  }, []);
+  return role;
+}
 
 export function initialsOf(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -13,9 +40,10 @@ export function initialsOf(name: string) {
 /** The signed-in person (live mode) or the demo persona. */
 export function useMe() {
   const ws = useWorkspace();
+  const demoRole = useDemoRole();
   const live = ws.status === "ready";
   const name = live ? (ws.displayName ?? ws.email ?? "ผู้ใช้") : DEMO_ME.name;
-  const role: Role = live ? (ws.role ?? "pm") : DEMO_ME.role;
+  const role: Role = live ? (ws.role ?? "pm") : demoRole;
   return {
     live,
     name,

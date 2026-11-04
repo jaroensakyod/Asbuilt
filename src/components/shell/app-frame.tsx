@@ -11,10 +11,13 @@ import "@/lib/ops-store";
 import "@/lib/projects-store";
 import "@/lib/docs-store";
 import "@/lib/demo-seed";
+import "@/lib/modules";
 import { Sidebar } from "./sidebar";
+import { canView, moduleOfPath, MODULES } from "@/lib/permissions";
+import { useMe } from "@/lib/use-me";
 import { CommandPalette } from "./command-palette";
 
-const BARE = ["/login", "/signup", "/onboarding", "/invite", "/auth", "/reset-password"];
+const BARE = ["/login", "/signup", "/onboarding", "/invite", "/auth", "/reset-password", "/portal"];
 const isBare = (path: string) => BARE.some((p) => path === p || path.startsWith(p + "/"));
 
 /**
@@ -28,6 +31,9 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const router = useRouter();
   const ws = useWorkspace();
   const bare = isBare(path);
+  const me = useMe();
+  const mod = moduleOfPath(path);
+  const denied = !!mod && !canView(me.role, mod);
 
   useEffect(() => {
     if (!LIVE) {
@@ -73,7 +79,18 @@ export function AppFrame({ children }: { children: ReactNode }) {
     <>
       <div className="flex min-h-screen">
         <Sidebar />
-        <div className="min-w-0 flex-1">{children}</div>
+        <div className="min-w-0 flex-1">
+          {denied ? (
+            <div className="flex min-h-[70vh] items-center justify-center px-8">
+              <div className="max-w-[420px] rounded-[14px] border border-line bg-card p-6">
+                <p className="text-[15px] font-medium">ไม่มีสิทธิ์เข้าถึง{MODULES[mod!]}</p>
+                <p className="mt-1 text-[13px] text-ink-2">บทบาท {me.roleLabel} ดูส่วนนี้ไม่ได้ ติดต่อผู้ดูแลระบบของบริษัทถ้าต้องใช้งาน</p>
+              </div>
+            </div>
+          ) : (
+            children
+          )}
+        </div>
       </div>
       <CommandPalette />
       <RemoteErrors />

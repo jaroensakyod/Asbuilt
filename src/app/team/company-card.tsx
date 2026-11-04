@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { Card, CardHead, Field, inputCls } from "@/components/ui";
 import { COMPANY_INFO, team } from "@/lib/data";
-import { companyOverrides, invites, SEATS, type CompanySettings } from "./team-store";
+import { companyOverrides, invites, seatLimit, type CompanySettings } from "./team-store";
+import { SampleDataCard } from "./sample-data-card";
 
 const FIELDS: { key: keyof CompanySettings; label: string; mono?: boolean; wide?: boolean }[] = [
   { key: "name", label: "ชื่อบริษัท", wide: true },
@@ -85,11 +86,11 @@ export function CompanyCard() {
           <div className="mt-3 flex items-baseline justify-between text-[13px] text-ink-2">
             <span>ที่นั่งที่ใช้</span>
             <span className="num font-mono">
-              {used}/{SEATS}
+              {used}/{seatLimit()}
             </span>
           </div>
           <div className="mt-1.5 h-1.5 rounded-full bg-raised">
-            <div className={`h-full rounded-full ${used / SEATS > 0.9 ? "bg-accent" : "bg-ink/70"}`} style={{ width: `${Math.min(100, (used / SEATS) * 100)}%` }} />
+            <div className={`h-full rounded-full ${used / seatLimit() > 0.9 ? "bg-accent" : "bg-ink/70"}`} style={{ width: `${Math.min(100, (used / seatLimit()) * 100)}%` }} />
           </div>
           <ul className="mt-4 flex flex-col gap-1.5 text-[13px] text-ink-2">
             <li className="flex justify-between">
@@ -108,6 +109,7 @@ export function CompanyCard() {
           <p className="mt-4 text-[12px] text-ink-3">การชำระเงินและการเปลี่ยนแพ็กเกจยังไม่เปิดใช้งานในเวอร์ชันตัวอย่าง</p>
         </div>
       </Card>
+      <SampleDataCard />
     </div>
   );
 }

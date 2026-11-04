@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { LIVE, SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase/env";
 
-const PUBLIC = ["/login", "/signup", "/auth", "/invite", "/reset-password"];
+const PUBLIC = ["/login", "/signup", "/auth", "/invite", "/reset-password", "/portal"];
 
 // Refreshes the Supabase session cookie on every request and sends signed-out
 // visitors to /login. In demo mode (no Supabase env) it does nothing.

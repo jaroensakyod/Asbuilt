@@ -7,6 +7,8 @@ import { cx, Keycap } from "@/components/ui";
 import { openSearch } from "./sidebar";
 import { useMe } from "@/lib/use-me";
 import { signOut, switchCompany } from "@/lib/workspace";
+import { setDemoRole } from "@/lib/use-me";
+import { ROLE_LABEL, type Role } from "@/lib/data";
 import { TODAY, getProject, slaText } from "@/lib/data";
 import { useInspections, useMaintenance, useRepairs, maintState } from "@/lib/ops-store";
 
@@ -118,6 +120,25 @@ export function TopActions() {
               </p>
               <p className="mt-1 truncate text-[12px] text-ink-2">{me.company}</p>
             </div>
+            {!me.live && (
+              <>
+                <div className="my-1 h-px bg-line" />
+                <label className="flex items-center justify-between gap-2 px-3 py-2 text-[12px] text-ink-3">
+                  ดูในบทบาท (เดโม)
+                  <select
+                    value={me.role}
+                    onChange={(e) => setDemoRole(e.target.value as Role)}
+                    className="h-8 rounded-[6px] border border-line-strong bg-card px-2 text-[13px] text-ink"
+                  >
+                    {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
             {me.companies.length > 1 && (
               <>
                 <div className="my-1 h-px bg-line" />

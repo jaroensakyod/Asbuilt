@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link2, Search, UserPlus, X } from "lucide-react";
 import { Card, CardHead, cx, Field, inputCls, Status } from "@/components/ui";
 import { ROLE_LABEL, team, thDate, TODAY, daysBetween, type Role } from "@/lib/data";
-import { invites, inviteLink, SEATS } from "./team-store";
+import { invites, inviteLink, seatLimit } from "./team-store";
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
 
@@ -60,8 +60,8 @@ export function TeamView() {
       setError("อีเมลนี้มีอยู่ในทีมแล้ว");
       return;
     }
-    if (used >= SEATS) {
-      setError(`ใช้ครบ ${SEATS} ที่นั่งของแพ็กเกจแล้ว`);
+    if (used >= seatLimit()) {
+      setError(`ใช้ครบ ${seatLimit()} ที่นั่งของแพ็กเกจแล้ว`);
       return;
     }
     invites.set((prev) => [
@@ -85,7 +85,7 @@ export function TeamView() {
     <Card>
       <CardHead
         title="ผู้ใช้งาน"
-        meta={`${rows.length} คน · ใช้ ${used}/${SEATS} ที่นั่ง`}
+        meta={`${rows.length} คน · ใช้ ${used}/${seatLimit()} ที่นั่ง`}
         action={
           <button
             type="button"

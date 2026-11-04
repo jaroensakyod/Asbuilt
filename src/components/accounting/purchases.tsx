@@ -1,0 +1,276 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Check, Printer, Wallet } from "lucide-react";
+import { Card, CardHead, inputCls } from "@/components/ui";
+import { supplierBills, type SupplierBill } from "@/lib/biz";
+import { A } from "@/lib/accounting/coa";
+import { billTotal, billWht, isServiceBill, paymentOf } from "@/lib/accounting/journal";
+import { docPrefix, fmt, r2, thDateSlash } from "@/lib/accounting/money";
+import { aging, AGING_BUCKETS } from "@/lib/accounting/reports";
+import { whtForm } from "@/lib/accounting/tax";
+import { ACC_TODAY, apPaymentsCol, isLockedDate, LOCKED_MSG, useAccess, useBooks } from "@/lib/accounting/store";
+import type { ApPayment } from "@/lib/accounting/types";
+import { Btn, CsvButton, Empty, I, Labeled, Modal, Notice, Num, Pill, PrintSheet, tableCls, td, tdR, th, thR } from "./bits";
+import { VoucherDoc } from "./docs";
+
+const STATUS: Record<SupplierBill["status"], { label: string; tone: "neutral" | "accent" | "pos" }> = {
+  open: { label: "รออนุมัติ", tone: "neutral" },
+  approved: { label: "อนุมัติจ่าย", tone: "accent" },
+  paid: { label: "จ่ายแล้ว", tone: "pos" },
+};
+
+export function PurchasesView() {
+  const { input, entries, accounts, projectName, locks } = useBooks();
+  const { edit, approve } = useAccess();
+  const [filter, setFilter] = useState<"unpaid" | "paid" | "all">("unpaid");
+  const [pay, setPay] = useState<SupplierBill | null>(null);
+  const [voucher, setVoucher] = useState<{ bill: SupplierBill; pay: ApPayment } | null>(null);
+
+  const bills = useMemo(() => [...input.bills].sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [input.bills]);
+  const unpaid = bills.filter((b) => b.status !== "paid");
+  const shown = filter === "all" ? bills : filter === "paid" ? bills.filter((b) => b.status === "paid").reverse() : unpaid;
+  const ag = useMemo(() => aging(unpaid, (b) => b.dueDate, billTotal, ACC_TODAY), [unpaid]);
+  const bySupplier = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const r of ag.rows) {
+      const v = m.get(r.item.supplierName) ?? AGING_BUCKETS.map(() => 0);
+      v[r.bucket] = r2(v[r.bucket] + billTotal(r.item));
+      m.set(r.item.supplierName, v);
+    }
+    return [...m.entries()].sort((a, b) => b[1].reduce((s, x) => s + x, 0) - a[1].reduce((s, x) => s + x, 0));
+  }, [ag]);
+
+  const voucherLines = voucher ? (entries.find((e) => e.key === `bill-payment:${voucher.pay.id}`)?.lines ?? []) : [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      {!bills.length && <Notice>ยังไม่มีใบแจ้งหนี้ผู้ขายจากโมดูลจัดซื้อ เมื่อรับสินค้าและบันทึกใบแจ้งหนี้แล้ว รายการจะแสดงที่นี่อัตโนมัติ</Notice>}
+      <Card>
+        <CardHead
+          title="ใบแจ้งหนี้ผู้ขาย"
+          meta={`ค้างจ่าย ${unpaid.length} ใบ · ${fmt(ag.total)} บาท`}
+          action={
+            <div className="flex items-center gap-2">
+              <select aria-label="สถานะ" className={inputCls} value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
+                <option value="unpaid">ค้างจ่าย</option>
+                <option value="paid">จ่ายแล้ว</option>
+                <option value="all">ทั้งหมด</option>
+              </select>
+              <CsvButton
+                name={`supplier-bills-${ACC_TODAY}`}
+                rows={() => [["เลขที่", "วันที่", "ครบกำหนด", "ผู้ขาย", "เลขผู้เสียภาษี", "โครงการ", "หมวดต้นทุน", "ก่อน VAT", "VAT", "หัก ณ ที่จ่าย %", "สถานะ"], ...shown.map((b) => [b.id, b.date, b.dueDate, b.supplierName, b.supplierTaxId ?? "", b.projectId ?? "", b.costCode ?? "", b.subtotal, b.vat, b.whtRate, STATUS[b.status].label])]}
+              />
+            </div>
+          }
+        />
+        {shown.length ? (
+          <div className="overflow-x-auto">
+            <table className={tableCls}>
+              <thead>
+                <tr>
+                  <th className={th}>เลขที่</th>
+                  <th className={th}>ครบกำหนด</th>
+                  <th className={th}>ผู้ขาย</th>
+                  <th className={th}>โครงการ</th>
+                  <th className={thR}>ก่อน VAT</th>
+                  <th className={thR}>VAT</th>
+                  <th className={thR}>หัก ณ ที่จ่าย</th>
+                  <th className={th}>สถานะ</th>
+                  <th className={th} />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.slice(0, 80).map((b) => {
+                  const p = paymentOf(b, input.apPayments);
+                  return (
+                    <tr key={b.id}>
+                      <td className={td}>
+                        <span className="font-mono">{b.id}</span>
+                        <span className="block text-[12px] text-ink-3">{thDateSlash(b.date)}</span>
+                      </td>
+                      <td className={td}>
+                        <span className={b.status !== "paid" && b.dueDate < ACC_TODAY ? "num font-mono text-neg" : "num font-mono"}>{thDateSlash(b.dueDate)}</span>
+                      </td>
+                      <td className={td}>
+                        {b.supplierName}
+                        <span className="block font-mono text-[12px] text-ink-3">{b.supplierTaxId ?? "ไม่มีเลขผู้เสียภาษี"}</span>
+                      </td>
+                      <td className={td}>
+                        {b.projectId ? projectName(b.projectId) : <span className="text-ink-3">คลังวัสดุ</span>}
+                        {b.costCode && <span className="block font-mono text-[12px] text-ink-3">51{b.costCode}</span>}
+                      </td>
+                      <td className={tdR}>
+                        <Num v={b.subtotal} />
+                      </td>
+                      <td className={tdR}>
+                        <Num v={b.vat} acc />
+                        {isServiceBill(b) && b.vat > 0 && <span className="block text-[11px] text-ink-3">ยังไม่ถึงกำหนด</span>}
+                      </td>
+                      <td className={tdR}>
+                        {b.whtRate ? (
+                          <>
+                            <Num v={billWht(b)} />
+                            <span className="block text-[11px] text-ink-3">
+                              {b.whtRate}% {whtForm(b.supplierTaxId, b.whtRate)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-ink-3">–</span>
+                        )}
+                      </td>
+                      <td className={td}>
+                        <Pill tone={STATUS[b.status].tone}>{STATUS[b.status].label}</Pill>
+                      </td>
+                      <td className={tdR}>
+                        <div className="flex justify-end gap-1.5">
+                          {b.status === "open" && approve && (
+                            <Btn small onClick={() => supplierBills.upsert({ ...b, status: "approved" })}>
+                              <Check {...I} />
+                              อนุมัติ
+                            </Btn>
+                          )}
+                          {b.status === "approved" && edit && (
+                            <Btn small onClick={() => setPay(b)}>
+                              <Wallet {...I} />
+                              จ่ายชำระ
+                            </Btn>
+                          )}
+                          {p && (
+                            <Btn small onClick={() => setVoucher({ bill: b, pay: p })}>
+                              <Printer {...I} />
+                              {p.synthetic ? "ใบสำคัญจ่าย" : p.id}
+                            </Btn>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>ไม่มีรายการ</Empty>
+        )}
+      </Card>
+
+      <Card>
+        <CardHead title="อายุเจ้าหนี้ตามผู้ขาย" meta={`ณ ${thDateSlash(ACC_TODAY)}`} />
+        <div className="overflow-x-auto">
+          <table className={tableCls}>
+            <thead>
+              <tr>
+                <th className={th}>ผู้ขาย</th>
+                {AGING_BUCKETS.map((b) => (
+                  <th key={b} className={thR}>
+                    {b}
+                  </th>
+                ))}
+                <th className={thR}>รวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bySupplier.map(([name, v]) => (
+                <tr key={name}>
+                  <td className={td}>{name}</td>
+                  {v.map((x, k) => (
+                    <td key={k} className={tdR}>
+                      <Num v={x} acc />
+                    </td>
+                  ))}
+                  <td className={tdR}>
+                    <Num v={v.reduce((s, x) => s + x, 0)} strong />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className={td}>รวม</td>
+                {ag.totals.map((x, k) => (
+                  <td key={k} className={tdR}>
+                    <Num v={x} acc strong />
+                  </td>
+                ))}
+                <td className={tdR}>
+                  <Num v={ag.total} strong />
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </Card>
+
+      {pay && <PayBill bill={pay} onClose={() => setPay(null)} locks={locks} />}
+      <PrintSheet open={!!voucher} onClose={() => setVoucher(null)} title="ใบสำคัญจ่าย">
+        {voucher && <VoucherDoc bill={voucher.bill} pay={voucher.pay} lines={voucherLines} accounts={accounts} />}
+      </PrintSheet>
+    </div>
+  );
+}
+
+function PayBill({ bill, onClose, locks }: { bill: SupplierBill; onClose: () => void; locks: ReturnType<typeof useBooks>["locks"] }) {
+  const [date, setDate] = useState(ACC_TODAY);
+  const [account, setAccount] = useState<string>(A.bank);
+  const [note, setNote] = useState("");
+  const wht = billWht(bill);
+  const paid = r2(billTotal(bill) - wht);
+  const err = isLockedDate(date, locks) ? LOCKED_MSG : date < bill.date ? "วันที่จ่ายก่อนวันที่ใบแจ้งหนี้" : "";
+  const save = () => {
+    if (err) return;
+    const id = apPaymentsCol.nextId(docPrefix("PV", date));
+    apPaymentsCol.upsert({ id, billId: bill.id, date, account, whtRate: bill.whtRate, wht, paid, note: note.trim() || undefined });
+    supplierBills.upsert({ ...bill, status: "paid", paidDate: date });
+    onClose();
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`จ่ายชำระ ${bill.id}`}
+      footer={
+        <>
+          {err && <span className="mr-auto text-[13px] text-neg">{err}</span>}
+          <Btn onClick={onClose}>ยกเลิก</Btn>
+          <Btn primary disabled={!!err} onClick={save}>
+            ออกใบสำคัญจ่าย
+          </Btn>
+        </>
+      }
+    >
+      <p className="mb-3 text-[13px] text-ink-2">
+        {bill.supplierName} <span className="font-mono text-ink-3">{bill.supplierTaxId}</span>
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Labeled label="วันที่จ่าย">
+          <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+        </Labeled>
+        <Labeled label="จ่ายจาก">
+          <select className={inputCls} value={account} onChange={(e) => setAccount(e.target.value)}>
+            <option value={A.bank}>1112 เงินฝากธนาคาร</option>
+            <option value={A.cash}>1111 เงินสด</option>
+          </select>
+        </Labeled>
+        <Labeled label="หมายเหตุ / เลขที่เช็ค / อ้างอิงโอน" className="col-span-2">
+          <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
+        </Labeled>
+      </div>
+      <dl className="mt-4 grid grid-cols-3 gap-3 rounded-[10px] bg-raised px-4 py-3 text-[13px]">
+        <div>
+          <dt className="text-ink-3">ยอดตามใบแจ้งหนี้</dt>
+          <dd><Num v={billTotal(bill)} /></dd>
+        </div>
+        <div>
+          <dt className="text-ink-3">หัก ณ ที่จ่าย {bill.whtRate ? `${bill.whtRate}% ${whtForm(bill.supplierTaxId, bill.whtRate)}` : ""}</dt>
+          <dd><Num v={wht} acc /></dd>
+        </div>
+        <div>
+          <dt className="text-ink-3">จ่ายสุทธิ</dt>
+          <dd><Num v={paid} strong /></dd>
+        </div>
+      </dl>
+      {isServiceBill(bill) && bill.vat > 0 && <p className="mt-3 text-[12px] text-ink-3">ค่าบริการ: ภาษีซื้อ {fmt(bill.vat)} บาท ใช้สิทธิในเดือนที่จ่ายเงิน (โอนจาก 1155 เข้า 1154) เมื่อได้รับใบกำกับภาษีจากผู้ขาย</p>}
+    </Modal>
+  );
+}
