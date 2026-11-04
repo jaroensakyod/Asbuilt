@@ -79,6 +79,7 @@ const ROUTES: [string, ModuleKey][] = [
   ["/documents", "documents"],
   ["/team", "admin"],
   ["/billing", "admin"],
+  ["/settings", "admin"],
 ];
 export function moduleOfPath(path: string): ModuleKey | null {
   for (const [p, m] of ROUTES) if (path === p || path.startsWith(p + "/")) return m;

@@ -38,10 +38,13 @@ import {
   IdCard,
   Wallet,
   CreditCard,
+  Bell,
+  Settings,
 } from "lucide-react";
 import { cx, Keycap } from "@/components/ui";
 import { COMPANY_INFO } from "@/lib/data";
 import { useRepairs } from "@/lib/ops-store";
+import { useNotifications, useReadIds } from "@/lib/notifications";
 import { useMe } from "@/lib/use-me";
 import { canView, moduleOfPath } from "@/lib/permissions";
 
@@ -121,6 +124,8 @@ export const NAV: { label: string; items: Item[] }[] = [
     label: "ผู้ดูแลระบบ",
     items: [
       { href: "/team", label: "ผู้ใช้/ทีมงาน", icon: Users },
+      { href: "/notifications", label: "การแจ้งเตือน", icon: Bell },
+      { href: "/settings", label: "ตั้งค่า", icon: Settings },
       { href: "/billing", label: "แพ็กเกจ & การชำระเงิน", icon: CreditCard },
     ],
   },
@@ -134,6 +139,10 @@ export function Sidebar() {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const openRepairs = useRepairs().filter((r) => r.status !== "closed").length;
+  const notes = useNotifications();
+  const readIds = useReadIds();
+  const unreadNotes = notes.filter((n) => !readIds.includes(n.id)).length;
+  const countOf = (it: Item) => (it.href === "/repairs" ? openRepairs : it.href === "/notifications" ? unreadNotes : it.count);
   const me = useMe();
 
   useEffect(() => {
@@ -215,11 +224,11 @@ export function Sidebar() {
                     >
                       <Icon size={16} strokeWidth={1.5} className={active ? "text-ink" : "text-ink-3"} />
                       {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
-                      {(it.href === "/repairs" ? openRepairs : it.count) ? (
+                      {countOf(it) ? (
                         collapsed ? (
                           <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-accent" />
                         ) : (
-                          <span className="num font-mono text-[12px] text-accent-text">{it.href === "/repairs" ? openRepairs : it.count}</span>
+                          <span className="num font-mono text-[12px] text-accent-text">{countOf(it)}</span>
                         )
                       ) : null}
                     </Link>
