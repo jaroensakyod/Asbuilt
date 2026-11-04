@@ -1,0 +1,150 @@
+// Browser-only stores kept in localStorage. SSR-safe: the server snapshot is
+// always the fallback value, the client reads localStorage after hydration
+// through useSyncExternalStore.
+
+import { useSyncExternalStore } from "react";
+import { getHouseModel, TODAY, type Project } from "./data";
+
+export type LocalStore<T> = {
+  get: () => T;
+  set: (next: T | ((prev: T) => T)) => void;
+  subscribe: (fn: () => void) => () => void;
+  use: () => T;
+};
+
+export function createLocalStore<T>(key: string, fallback: T): LocalStore<T> {
+  const listeners = new Set<() => void>();
+  let raw: string | null | undefined;
+  let cache: T = fallback;
+
+  const read = (): T => {
+    if (typeof window === "undefined") return fallback;
+    let next: string | null = null;
+    try {
+      next = window.localStorage.getItem(key);
+    } catch {
+      next = null;
+    }
+    if (next !== raw) {
+      raw = next;
+      try {
+        cache = next ? (JSON.parse(next) as T) : fallback;
+      } catch {
+        cache = fallback;
+      }
+    }
+    return cache;
+  };
+
+  const emit = () => listeners.forEach((fn) => fn());
+
+  const set = (v: T | ((prev: T) => T)) => {
+    const value = typeof v === "function" ? (v as (prev: T) => T)(read()) : v;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // storage full or disabled: keep the in-memory value for this session
+      raw = JSON.stringify(value);
+      cache = value;
+    }
+    emit();
+  };
+
+  const subscribe = (fn: () => void) => {
+    listeners.add(fn);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) fn();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      listeners.delete(fn);
+      window.removeEventListener("storage", onStorage);
+    };
+  };
+
+  const getServer = () => fallback;
+
+  return {
+    get: read,
+    set,
+    subscribe,
+    use: () => useSyncExternalStore(subscribe, read, getServer),
+  };
+}
+
+// ---------- projects created in the browser ----------
+
+export type NewProjectInput = {
+  owner: string;
+  phone: string;
+  modelCode: string;
+  province: string;
+  address: string;
+  start: string;
+  value: number;
+  pm: string;
+};
+
+const EMPTY: Project[] = [];
+export const localProjects = createLocalStore<Project[]>("asbuilt.projects.v1", EMPTY);
+
+export function useLocalProjects() {
+  return localProjects.use();
+}
+
+const PROVINCE_LL: Record<string, [number, number]> = {
+  "กรุงเทพฯ": [13.79, 100.6],
+  "นนทบุรี": [13.87, 100.47],
+  "ปทุมธานี": [14.0, 100.6],
+  "สมุทรปราการ": [13.6, 100.63],
+  "นครปฐม": [13.82, 100.2],
+  "ชลบุรี": [13.15, 100.95],
+  "เชียงใหม่": [18.79, 98.98],
+  "ขอนแก่น": [16.43, 102.83],
+  "อยุธยา": [14.35, 100.57],
+};
+export const PROVINCES = Object.keys(PROVINCE_LL);
+
+export function addProject(input: NewProjectInput, existingIds: string[]): Project {
+  const m = getHouseModel(input.modelCode);
+  const year = Number(input.start.slice(0, 4)) || 2026;
+  const taken = new Set([...existingIds, ...localProjects.get().map((p) => p.id)]);
+  let n = 21;
+  while (taken.has(`HC-${year}-${String(n).padStart(2, "0")}`)) n++;
+  const id = `HC-${year}-${String(n).padStart(2, "0")}`;
+  const months = m?.months ?? 10;
+  const finish = new Date(Date.parse(input.start) + months * 30.4 * 86400000).toISOString().slice(0, 10);
+  const base = PROVINCE_LL[input.province] ?? PROVINCE_LL["กรุงเทพฯ"];
+  const jitter = (id.charCodeAt(id.length - 1) % 10) / 100 - 0.05;
+  const first = input.owner.trim().split(/\s+/)[0] ?? input.owner;
+  const p: Project = {
+    id,
+    name: `บ้านคุณ${first}`,
+    owner: input.owner.trim(),
+    model: m?.name ?? input.modelCode,
+    modelCode: input.modelCode,
+    province: input.province,
+    pm: input.pm,
+    status: "planning",
+    actual: 0,
+    plan: 0,
+    phase: "ขออนุญาต",
+    start: input.start,
+    finish,
+    value: input.value,
+    floors: m?.floors ?? 2,
+    area: m?.area ?? 0,
+    openRepairs: 0,
+    lat: Math.round((base[0] + jitter) * 10000) / 10000,
+    lng: Math.round((base[1] - jitter) * 10000) / 10000,
+    contractDate: TODAY,
+    address: input.address,
+    phone: input.phone,
+  };
+  localProjects.set((prev) => [p, ...prev]);
+  return p;
+}
+
+export function removeLocalProject(id: string) {
+  localProjects.set((prev) => prev.filter((p) => p.id !== id));
+}

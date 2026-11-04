@@ -1,26 +1,115 @@
 @import "tailwindcss";
 
+/*
+  Asbuilt design tokens
+  Direction (adapted from unslop by Damir Sokolovsky, @heydamir — CC BY 4.0):
+  - Product: one file per house, every system, from site to after-sales
+  - Character: exact, grounded, a little warm
+  - World: drafting paper, site concrete, survey marking paint
+  - Moments: the 3D house model and the plan-vs-actual progress list
+  - Signature: equipment asset tags (mono code on a riveted plate)
+*/
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --page: #f7f4ee;
+  --card: #fdfbf7;
+  --raised: #efe9df;
+  --deep: #ebe5da;
+  --line: rgb(31 27 22 / 0.08);
+  --line-strong: rgb(31 27 22 / 0.14);
+  --text: #1f1b16;
+  --text-2: #5e554a;
+  --text-3: #7b7266;
+  --accent: #c2410c;
+  --accent-text: #a3360a;
+  --accent-soft: #f6e3d6;
+  --pos: #2f7d4f;
+  --pos-soft: #e2efe4;
+  --neg: #b42318;
+  --neg-soft: #f7e1dd;
+  --warn: #9a6a07;
+  --warn-soft: #f4ead0;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-raised: var(--raised);
+  --color-deep: var(--deep);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-ink-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-pos: var(--pos);
+  --color-pos-soft: var(--pos-soft);
+  --color-neg: var(--neg);
+  --color-neg-soft: var(--neg-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-plex-thai), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --ease-out: var(--ease);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--page);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  font-feature-settings: "tnum" 1;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.enter {
+  animation: rise 400ms var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter {
+    animation: none;
+  }
+}
+
+/* hide the app chrome when printing any page */
+@media print {
+  [data-shell] {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
 }
