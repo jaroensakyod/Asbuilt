@@ -37,6 +37,8 @@ export type ModelFile = {
   };
   /** manual fixes chosen in the viewer when the guess was wrong */
   fix?: ViewFix;
+  /** small 3D view (JPEG data URL, ~30 KB) made the first time the file is opened, for project pages */
+  thumb?: string;
   /** what each group of parts is, from an AI run in the viewer */
   labels?: PartLabels;
   /** filled after the first successful load in a browser */
@@ -97,7 +99,12 @@ export async function removeModel(m: ModelFile) {
 
 export function saveFix(id: string, fix: ViewFix) {
   const m = modelFiles.get(id);
-  if (m) modelFiles.upsert({ ...m, fix, stats: undefined });
+  if (m) modelFiles.upsert({ ...m, fix, stats: undefined, thumb: undefined });
+}
+
+export function saveThumb(id: string, thumb: string) {
+  const m = modelFiles.get(id);
+  if (m && !m.thumb) modelFiles.upsert({ ...m, thumb });
 }
 
 export function saveLabels(id: string, labels: PartLabels | undefined) {

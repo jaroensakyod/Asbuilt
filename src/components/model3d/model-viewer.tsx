@@ -18,7 +18,7 @@ import { aiGenerate, useAiStatus } from "@/lib/ai/client";
 import { DocHeader } from "@/components/ops/doc";
 import { PrintStyle } from "@/components/ops/bits";
 import { ALL_SYSTEMS, SYSTEMS } from "@/lib/viewer-data";
-import { modelFiles, projectModels, saveFix, saveLabels, saveStats, STAGE_LABEL, type ModelFile } from "@/lib/model3d/store";
+import { modelFiles, projectModels, saveFix, saveLabels, saveStats, saveThumb, STAGE_LABEL, type ModelFile } from "@/lib/model3d/store";
 import { CLASSIFY_SCHEMA, classifyPrompt, normalizeKinds, PART_KINDS, type PartKind } from "@/lib/model3d/parts-ai";
 import { FORMATS, UNIT_LABEL, type SysKey, type Unit } from "@/lib/model3d/classify";
 import { disposeModel, loadModel, partOf, relabel, type LoadedModel } from "./load";
@@ -179,6 +179,13 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
   useEffect(() => {
     if (stats) saveStats(file.id, stats);
   }, [file.id, stats]);
+  // first open: keep a small picture for the project page
+  const hasThumb = !!file.thumb;
+  useEffect(() => {
+    if (!shooter || hasThumb) return;
+    const t = setTimeout(() => saveThumb(file.id, shooter(["iso"], 640, 360, 0.8)[0]), 300);
+    return () => clearTimeout(t);
+  }, [shooter, hasThumb, file.id]);
 
   const onSelect = useCallback((m: THREE.Mesh | null) => setSelected(m), []);
   const selectAsset = (code: string) => {

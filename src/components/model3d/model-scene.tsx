@@ -35,7 +35,7 @@ export type SceneProps = {
 
 export type ShotView = "iso" | "front" | "side" | "top";
 /** Render the given views off-screen at w×h and return them as JPEG data URLs. */
-export type Shooter = (views: ShotView[], w: number, h: number) => string[];
+export type Shooter = (views: ShotView[], w: number, h: number, quality?: number) => string[];
 
 const HILITE = new THREE.MeshStandardMaterial({ color: "#f2a23a", emissive: "#f2a23a", emissiveIntensity: 0.45, side: THREE.DoubleSide });
 const FLAG = new THREE.MeshStandardMaterial({ color: "#d9483b", emissive: "#d9483b", emissiveIntensity: 0.35, side: THREE.DoubleSide });
@@ -81,7 +81,7 @@ function applyLook(model: LoadedModel, visible: Record<SysKey, boolean>, xray: b
  * drawing); the 3D view uses perspective from the front-right corner. Canvas size, camera and
  * pixel ratio are put back afterwards, so the live view is untouched.
  */
-function shoot(gl: THREE.WebGLRenderer, scene: THREE.Scene, persp: THREE.PerspectiveCamera, s: THREE.Vector3, view: ShotView, w: number, h: number) {
+function shoot(gl: THREE.WebGLRenderer, scene: THREE.Scene, persp: THREE.PerspectiveCamera, s: THREE.Vector3, view: ShotView, w: number, h: number, quality = 0.9) {
   const aspect = w / h;
   const c = new THREE.Vector3(0, s.y / 2, 0);
   const pad = 1.08;
@@ -137,7 +137,7 @@ function shoot(gl: THREE.WebGLRenderer, scene: THREE.Scene, persp: THREE.Perspec
   gl.setPixelRatio(1);
   gl.setSize(w, h, false);
   gl.render(scene, cam);
-  const url = gl.domElement.toDataURL("image/jpeg", 0.9);
+  const url = gl.domElement.toDataURL("image/jpeg", quality);
   gl.setPixelRatio(ratio);
   gl.setSize(size.x, size.y, false);
   gl.setClearColor(clear, alpha);
@@ -152,8 +152,8 @@ function ShooterHandle({ model, onShooter }: { model: LoadedModel; onShooter?: (
   const invalidate = useThree((st) => st.invalidate);
   useEffect(() => {
     if (!onShooter) return;
-    onShooter((views, w, h) => {
-      const out = views.map((v) => shoot(gl, scene, camera, model.size, v, w, h));
+    onShooter((views, w, h, quality) => {
+      const out = views.map((v) => shoot(gl, scene, camera, model.size, v, w, h, quality));
       invalidate();
       return out;
     });
