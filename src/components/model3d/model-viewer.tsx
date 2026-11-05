@@ -2,21 +2,27 @@
 
 // Full viewer for 3D files uploaded to a project: pick a file, toggle systems, X-ray,
 // cut by height, click a part to see its asset (registry + repairs). Fixes for units /
-// orientation are saved on the file record so everyone sees the model the same way.
+// orientation and AI part labels are saved on the file record so everyone sees the model
+// the same way. Exports: the GLB / original .skp, a snapshot, and a 4-view sheet to print as PDF.
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type * as THREE from "three";
-import { Camera, Focus, Layers, LoaderCircle, RotateCcw, ScanEye, Scissors, TriangleAlert, Upload } from "lucide-react";
+import { Camera, Download, Focus, Images, Layers, LoaderCircle, Printer, RotateCcw, ScanEye, Scissors, Sparkles, TriangleAlert, Upload, X } from "lucide-react";
 import { AssetTag, Card, CardHead, cx, inputCls, Status } from "@/components/ui";
 import { REPAIR_STATUS_LABEL, repairs, type Project } from "@/lib/data";
 import { assetOf, getModel } from "@/lib/house";
-import { useMediaUrl, fileSize } from "@/lib/media";
+import { downloadMedia, useMediaUrl, fileSize } from "@/lib/media";
+import { aiGenerate, useAiStatus } from "@/lib/ai/client";
+import { DocHeader } from "@/components/ops/doc";
+import { PrintStyle } from "@/components/ops/bits";
 import { ALL_SYSTEMS, SYSTEMS } from "@/lib/viewer-data";
-import { modelFiles, projectModels, saveFix, saveStats, STAGE_LABEL, type ModelFile } from "@/lib/model3d/store";
+import { modelFiles, projectModels, saveFix, saveLabels, saveStats, STAGE_LABEL, type ModelFile } from "@/lib/model3d/store";
+import { CLASSIFY_SCHEMA, classifyPrompt, normalizeKinds, PART_KINDS, type PartKind } from "@/lib/model3d/parts-ai";
 import { FORMATS, UNIT_LABEL, type SysKey, type Unit } from "@/lib/model3d/classify";
-import { disposeModel, loadModel, partOf, type LoadedModel } from "./load";
+import { disposeModel, loadModel, partOf, relabel, type LoadedModel } from "./load";
+import type { Shooter, ShotView } from "./model-scene";
 import { UploadModelForm } from "./upload-form";
 
 const ModelScene = dynamic(() => import("./model-scene").then((m) => m.ModelScene), {
@@ -85,14 +91,45 @@ export function ModelViewer({ project, initialFile }: { project: Project; initia
             </>
           )}
         </span>
-        <button type="button" className={cx(btn, "ml-auto")} onClick={() => setAdding(true)}>
-          <Upload size={16} strokeWidth={1.5} /> อัปโหลดไฟล์ใหม่
-        </button>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <DownloadButton media={file.media} name={`${file.name}.${file.format}`} label={file.format.toUpperCase()} />
+          {file.source?.original && <DownloadButton media={file.source.original} name={file.source.name} label="SKP ต้นฉบับ" />}
+          <button type="button" className={btn} onClick={() => setAdding(true)}>
+            <Upload size={16} strokeWidth={1.5} /> อัปโหลดไฟล์ใหม่
+          </button>
+        </div>
       </div>
       <FileView key={`${file.id}:${JSON.stringify(file.fix ?? {})}`} file={file} project={project} />
     </div>
   );
 }
+
+function DownloadButton({ media, name, label }: { media: ModelFile["media"]; name: string; label: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className={btn}
+      disabled={busy}
+      title={`ดาวน์โหลด ${name} (${fileSize(media.size)})`}
+      onClick={() => {
+        setBusy(true);
+        downloadMedia(media, name)
+          .catch((e: unknown) => window.alert(e instanceof Error ? e.message : String(e)))
+          .finally(() => setBusy(false));
+      }}
+    >
+      {busy ? <LoaderCircle size={16} strokeWidth={1.5} className="animate-spin" /> : <Download size={16} strokeWidth={1.5} />} {label}
+    </button>
+  );
+}
+
+const SHOTS: { view: ShotView; label: string }[] = [
+  { view: "front", label: "รูปด้านหน้า" },
+  { view: "side", label: "รูปด้านข้าง" },
+  { view: "top", label: "มองจากด้านบน" },
+  { view: "iso", label: "ทัศนียภาพ 3 มิติ" },
+];
 
 function FileView({ file, project }: { file: ModelFile; project: Project }) {
   const url = useMediaUrl(file.media);
@@ -105,6 +142,10 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
   const [selected, setSelected] = useState<THREE.Mesh | null>(null);
   const [fitKey, setFitKey] = useState(0);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [shooter, setShooterState] = useState<Shooter | null>(null);
+  const setShooter = useCallback((s: Shooter | null) => setShooterState(() => s), []);
+  const [sheet, setSheet] = useState<string[] | null>(null);
+  const [kindOn, setKindOn] = useState<Partial<Record<PartKind, boolean>>>({});
 
   useEffect(() => {
     if (!url) return;
@@ -116,7 +157,6 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
         if (!alive) return disposeModel(m);
         setState({ status: "ready", model: m });
         setCut(Math.round(m.size.y * 0.6 * 10) / 10);
-        saveStats(file.id, m.stats);
       })
       .catch((e: unknown) => alive && setState({ status: "error", error: e instanceof Error ? e.message : String(e) }));
     return () => {
@@ -130,7 +170,15 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
   const projectRepairs = useMemo(() => repairs.filter((r) => r.projectId === project.id), [project.id]);
   const flagged = useMemo(() => new Set(projectRepairs.filter((r) => r.status !== "closed").map((r) => r.asset)), [projectRepairs]);
   const model = state.status === "ready" ? state.model : null;
-  const stats = model?.stats;
+  // only codes in the company's registry (house model assets, or ones with a repair) count as equipment
+  const known = useMemo(() => new Set([...getModel(project.modelCode).assets.map((a) => a.code.toUpperCase()), ...projectRepairs.map((r) => r.asset.toUpperCase())]), [project.modelCode, projectRepairs]);
+  const kinds = file.labels?.kinds;
+  // re-labels the loaded parts (mutates their data) whenever the registry or the AI labels change
+  const labelled = useMemo(() => (model ? relabel(model, { known, kinds }) : null), [model, known, kinds]);
+  const stats = labelled?.stats;
+  useEffect(() => {
+    if (stats) saveStats(file.id, stats);
+  }, [file.id, stats]);
 
   const onSelect = useCallback((m: THREE.Mesh | null) => setSelected(m), []);
   const selectAsset = (code: string) => {
@@ -139,6 +187,12 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
     const sys = partOf(m)!.sys;
     setVisible((v) => ({ ...v, [sys]: true }));
     setSelected(m);
+  };
+  const makeSheet = () => {
+    if (!shooter) return;
+    setSelected(null);
+    // let the selection highlight clear before rendering
+    requestAnimationFrame(() => requestAnimationFrame(() => setSheet(shooter(SHOTS.map((x) => x.view), 1800, 900))));
   };
   const snapshot = () => {
     if (!canvas) return;
@@ -152,7 +206,20 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="relative h-[62vh] min-h-[380px] overflow-hidden rounded-[14px] border border-line bg-raised lg:h-[calc(100vh-190px)]">
         {model && (
-          <ModelScene model={model} visible={visible} xray={xray} cut={cutOn ? cut : null} selected={selected} onSelect={onSelect} flagged={flagged} fitKey={fitKey} onCanvas={setCanvas} />
+          <ModelScene
+            model={model}
+            visible={visible}
+            xray={xray}
+            cut={cutOn ? cut : null}
+            selected={selected}
+            onSelect={onSelect}
+            flagged={flagged}
+            fitKey={fitKey}
+            onCanvas={setCanvas}
+            kindOn={kindOn}
+            labelKey={labelled}
+            onShooter={setShooter}
+          />
         )}
         {(state.status === "loading" || state.status === "idle") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[14px] text-ink-2">
@@ -181,6 +248,9 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
             </button>
             <button type="button" className={cx(btn, "shadow-sm")} onClick={snapshot} disabled={!canvas}>
               <Camera size={16} strokeWidth={1.5} /> บันทึกภาพ
+            </button>
+            <button type="button" className={cx(btn, "shadow-sm")} onClick={makeSheet} disabled={!shooter} title="ภาพด้านหน้า ด้านข้าง ด้านบน และ 3 มิติ ในหน้าเดียว พิมพ์หรือบันทึกเป็น PDF ส่งลูกค้าได้">
+              <Images size={16} strokeWidth={1.5} /> ภาพชุด 4 มุม
             </button>
           </div>
         )}
@@ -235,6 +305,11 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
         {stats && (
           <Card>
             <CardHead title="อุปกรณ์ในโมเดล" meta={`${stats.assets.length} รหัส`} />
+            {!!labelled?.unregistered.length && (
+              <p className="border-b border-line px-5 py-2 text-[12px] leading-relaxed text-ink-3" title={labelled.unregistered.join(", ")}>
+                ไม่นับ {labelled.unregistered.length} ชื่อที่หน้าตาเหมือนรหัส แต่ไม่อยู่ในทะเบียนอุปกรณ์ของแบบบ้าน {project.modelCode} (เช่น {labelled.unregistered.slice(0, 3).join(", ")})
+              </p>
+            )}
             {stats.assets.length ? (
               <div className="flex max-h-[220px] flex-wrap gap-1.5 overflow-auto px-5 py-3">
                 {stats.assets.map((code) => (
@@ -245,13 +320,153 @@ function FileView({ file, project }: { file: ModelFile; project: Project }) {
               </div>
             ) : (
               <p className="px-5 py-3 text-[13px] leading-relaxed text-ink-3">
-                ไม่พบรหัสอุปกรณ์ในชื่อชิ้นส่วน ให้ตั้งชื่อ Component ใน SketchUp เป็นรหัส เช่น <span className="font-mono">AC-201</span>, <span className="font-mono">WC-101</span> แล้วคลิกที่ชิ้นนั้นจะเห็นประวัติแจ้งซ่อมและประกัน
+                ไม่พบรหัสอุปกรณ์ที่อยู่ในทะเบียน ให้ตั้งชื่อ Component ใน SketchUp เป็นรหัสจากทะเบียนอุปกรณ์ เช่น <span className="font-mono">AC-201</span>, <span className="font-mono">WC-101</span> แล้วคลิกที่ชิ้นนั้นจะเห็นประวัติแจ้งซ่อมและประกัน
               </p>
             )}
           </Card>
         )}
 
+        {model && labelled && <PartsCard file={file} model={model} byKind={labelled.byKind} kindOn={kindOn} setKindOn={setKindOn} />}
+
         {model && <FixCard file={file} model={model} />}
+      </div>
+      {sheet && <ViewSheet shots={sheet} file={file} project={project} size={model?.stats.size} onClose={() => setSheet(null)} />}
+    </div>
+  );
+}
+
+type KindOn = Partial<Record<PartKind, boolean>>;
+
+function PartsCard({ file, model, byKind, kindOn, setKindOn }: { file: ModelFile; model: LoadedModel; byKind: Partial<Record<PartKind, number>>; kindOn: KindOn; setKindOn: (f: (k: KindOn) => KindOn) => void }) {
+  const ai = useAiStatus();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const labels = file.labels;
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const [w, h, d] = model.stats.size;
+      const { system, prompt } = classifyPrompt(model.groups, [w, d, h]);
+      const r = await aiGenerate({ task: "model3d-labels", system, messages: [{ role: "user", parts: [{ text: prompt }] }], json: CLASSIFY_SCHEMA, maxOutputTokens: 16000 });
+      const u = r.usage;
+      saveLabels(file.id, { at: new Date().toISOString(), provider: u?.provider ?? "", model: u?.model ?? "", costThb: u?.costThb ?? 0, ms: u?.ms ?? 0, kinds: normalizeKinds(r.json, model.groups) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runBtn = (text: string) => (
+    <button type="button" className={btn} onClick={() => void run()} disabled={busy || !ai?.configured}>
+      {busy ? <LoaderCircle size={16} strokeWidth={1.5} className="animate-spin" /> : <Sparkles size={16} strokeWidth={1.5} />} {busy ? "AI กำลังดูโมเดล…" : text}
+    </button>
+  );
+  return (
+    <Card>
+      <CardHead title="หมวดชิ้นส่วน (AI)" meta={`${model.groups.length.toLocaleString("th-TH")} กลุ่ม`} />
+      {labels ? (
+        <>
+          <ul className="flex flex-col py-1.5">
+            {PART_KINDS.filter((k) => byKind[k.key]).map((k) => (
+              <li key={k.key}>
+                <label className="flex cursor-pointer items-center gap-2.5 px-5 py-1 text-[14px]">
+                  <input type="checkbox" checked={kindOn[k.key] !== false} onChange={(e) => setKindOn((v) => ({ ...v, [k.key]: e.target.checked }))} className="size-4 accent-[#13243b]" />
+                  <span className="flex-1">{k.label}</span>
+                  <span className="num font-mono text-[12px] text-ink-3">{(byKind[k.key] ?? 0).toLocaleString("th-TH")}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2 border-t border-line px-5 py-2.5">
+            <button type="button" className={btn} onClick={() => setKindOn(() => ({}))}>
+              แสดงทั้งหมด
+            </button>
+            <button type="button" className={btn} onClick={() => setKindOn(() => ({ furniture: false, site: false, other: false }))}>
+              เฉพาะตัวอาคาร
+            </button>
+          </div>
+          <div className="flex flex-col gap-2 border-t border-line px-5 py-2.5 text-[12px] text-ink-3">
+            <p>
+              จัดโดย {labels.model || labels.provider} · <span className="num font-mono">฿{labels.costThb.toFixed(2)}</span> · {(labels.ms / 1000).toFixed(0)} วิ ·{" "}
+              {new Date(labels.at).toLocaleDateString("th-TH", { dateStyle: "medium" })} · AI ดูจากชื่อ ขนาด และความสูงของแต่ละกลุ่ม อาจผิดได้บ้าง
+            </p>
+            <div className="flex gap-2">
+              {runBtn("จัดใหม่")}
+              <button type="button" className={btn} onClick={() => saveLabels(file.id, undefined)} disabled={busy}>
+                ล้างหมวด
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-2.5 px-5 py-3 text-[13px] leading-relaxed text-ink-2">
+          <p>
+            ชื่อชิ้นส่วนจาก SketchUp ส่วนใหญ่ไม่บอกว่าเป็นอะไร ทำให้แยกระบบงานไม่ได้ ให้ AI ดูชื่อ ขนาด และความสูงของ {model.groups.length.toLocaleString("th-TH")} กลุ่ม แล้วจัดเป็นพื้น เสา ผนัง
+            หลังคา เฟอร์นิเจอร์ โคมไฟ ฯลฯ จะเปิด/ปิดแต่ละหมวดได้ และระบบงานด้านบนจะแยกถูกขึ้น
+          </p>
+          <p className="text-[12px] text-ink-3">ใช้ AI ครั้งเดียวต่อไฟล์ ประมาณ ฿0.3–3 ขึ้นกับรุ่น AI ที่ตั้งไว้ ผลจะบันทึกไว้กับไฟล์</p>
+          {ai && !ai.configured && <p className="text-[12px] text-accent-text">ยังไม่ได้ตั้งค่า AI (ดูที่ ตั้งค่า → AI)</p>}
+          <div>{runBtn("ให้ AI จัดหมวด")}</div>
+        </div>
+      )}
+      {error && <p className="border-t border-line px-5 py-2 text-[12px] text-accent-text">{error}</p>}
+    </Card>
+  );
+}
+
+/** One-page sheet of the four views, printed (or saved as PDF) from the browser. */
+function ViewSheet({ shots, file, project, size, onClose }: { shots: string[]; file: ModelFile; project: Project; size?: [number, number, number]; onClose: () => void }) {
+  const saveAll = () =>
+    shots.forEach((src, i) => {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = `${project.id}_${file.name}_${SHOTS[i].view}.jpg`;
+      a.click();
+    });
+  const today = new Date().toLocaleDateString("th-TH", { dateStyle: "long" });
+  return (
+    <div className="fixed inset-0 z-50 overflow-auto bg-ink/40 p-4 print:bg-white print:p-0" role="dialog" aria-modal="true" aria-label="ภาพชุด 4 มุม">
+      <PrintStyle />
+      <style>{"@media print { @page { size: A4 landscape; margin: 10mm; } }"}</style>
+      <div className="ops-noprint mx-auto mb-3 flex max-w-[1100px] flex-wrap items-center gap-2 rounded-[12px] bg-card px-3 py-2.5 shadow-sm">
+        <span className="mr-auto text-[14px] text-ink">ภาพชุด 4 มุม · {file.name}</span>
+        <button type="button" className={cx(btn, on)} onClick={() => window.print()}>
+          <Printer size={16} strokeWidth={1.5} /> พิมพ์ / บันทึกเป็น PDF
+        </button>
+        <button type="button" className={btn} onClick={saveAll}>
+          <Download size={16} strokeWidth={1.5} /> ดาวน์โหลดรูป ({shots.length})
+        </button>
+        <button type="button" className={btn} onClick={onClose} aria-label="ปิด">
+          <X size={16} strokeWidth={1.5} />
+        </button>
+      </div>
+      <div className="ops-print mx-auto flex max-w-[1100px] flex-col gap-3 rounded-[12px] bg-white p-6 text-ink shadow-sm">
+        <DocHeader
+          title="ภาพโมเดล 3 มิติ"
+          titleEn="3D model views"
+          code={project.id}
+          meta={
+            <>
+              <p>{project.name}</p>
+              <p>{today}</p>
+            </>
+          }
+        />
+        <div className="grid grid-cols-2 gap-3">
+          {shots.map((src, i) => (
+            <figure key={SHOTS[i].view} className="avoid-break flex flex-col gap-1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URL made in the browser */}
+              <img src={src} alt={SHOTS[i].label} className="aspect-[2/1] w-full rounded-[6px] border border-line bg-[#f6f4ef] object-contain" />
+              <figcaption className="text-[12px] text-ink-2">{SHOTS[i].label}</figcaption>
+            </figure>
+          ))}
+        </div>
+        <p className="text-[11px] text-ink-3">
+          ไฟล์ {file.name}
+          {file.source ? ` (จาก ${file.source.name})` : ""} · {STAGE_LABEL[file.stage]}
+          {size ? ` · ขนาดโดยรวม กว้าง ${size[0]} × ลึก ${size[2]} × สูง ${size[1]} ม.` : ""} · ภาพจากโมเดลเพื่อประกอบการนำเสนอ ไม่ใช่แบบก่อสร้าง
+        </p>
       </div>
     </div>
   );

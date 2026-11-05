@@ -6,6 +6,7 @@ import { deleteMedia, saveMedia, type MediaRef } from "@/lib/media";
 import { workspace } from "@/lib/workspace";
 import { formatOf, isSkpName, rejectReason, type ModelFormat, type SysKey, type ViewFix } from "./classify";
 import { convertAndSaveSkp, type SkpStage } from "./skp-client";
+import type { PartLabels } from "./parts-ai";
 
 export type ModelStage = "design" | "construction" | "asbuilt";
 
@@ -36,6 +37,8 @@ export type ModelFile = {
   };
   /** manual fixes chosen in the viewer when the guess was wrong */
   fix?: ViewFix;
+  /** what each group of parts is, from an AI run in the viewer */
+  labels?: PartLabels;
   /** filled after the first successful load in a browser */
   stats?: { parts: number; triangles: number; unit: string; size: [number, number, number]; bySys: Record<SysKey, number>; assets: string[] };
 };
@@ -95,6 +98,11 @@ export async function removeModel(m: ModelFile) {
 export function saveFix(id: string, fix: ViewFix) {
   const m = modelFiles.get(id);
   if (m) modelFiles.upsert({ ...m, fix, stats: undefined });
+}
+
+export function saveLabels(id: string, labels: PartLabels | undefined) {
+  const m = modelFiles.get(id);
+  if (m) modelFiles.upsert({ ...m, labels });
 }
 
 export function saveStats(id: string, stats: NonNullable<ModelFile["stats"]>) {

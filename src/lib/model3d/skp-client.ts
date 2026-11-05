@@ -31,9 +31,10 @@ async function errorOf(res: Response) {
 
 /** Convert a .skp file and store the resulting GLB. Returns the GLB's MediaRef and what the converter found. */
 export async function convertAndSaveSkp(file: File, onStage?: (s: SkpStage) => void): Promise<{ media: MediaRef; info: SkpInfo; original?: MediaRef }> {
+  let original: MediaRef | undefined;
   if (isLiveReady()) {
     onStage?.("upload");
-    const original = await saveMedia(file);
+    original = await saveMedia(file);
     if (original.path) {
       onStage?.("convert");
       const res = await fetch("/api/skp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: original.path }) });
@@ -51,5 +52,7 @@ export async function convertAndSaveSkp(file: File, onStage?: (s: SkpStage) => v
   const glb = await res.blob();
   onStage?.("save");
   const media = await saveMedia(new File([glb], glbName(file.name), { type: "model/gltf-binary" }));
-  return { media, info };
+  // keep the original .skp too (in demo mode it stays in this browser) so it can be downloaded again
+  original ??= await saveMedia(file).catch(() => undefined);
+  return { media, info, original };
 }

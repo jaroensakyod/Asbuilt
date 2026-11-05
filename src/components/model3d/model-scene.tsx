@@ -25,7 +25,17 @@ export type SceneProps = {
   /** bump to re-frame the camera */
   fitKey: number;
   onCanvas?: (c: HTMLCanvasElement | null) => void;
+  /** part kinds switched off (AI labels) */
+  kindOn?: Partial<Record<string, boolean>>;
+  /** changes whenever part labels were re-applied */
+  labelKey?: unknown;
+  /** receives a function that renders fixed views to images */
+  onShooter?: (s: Shooter | null) => void;
 };
+
+export type ShotView = "iso" | "front" | "side" | "top";
+/** Render the given views off-screen at w×h and return them as JPEG data URLs. */
+export type Shooter = (views: ShotView[], w: number, h: number) => string[];
 
 const HILITE = new THREE.MeshStandardMaterial({ color: "#f2a23a", emissive: "#f2a23a", emissiveIntensity: 0.45, side: THREE.DoubleSide });
 const FLAG = new THREE.MeshStandardMaterial({ color: "#d9483b", emissive: "#d9483b", emissiveIntensity: 0.35, side: THREE.DoubleSide });
@@ -58,12 +68,98 @@ function setClip(gl: THREE.WebGLRenderer, cut: number | null) {
   gl.clippingPlanes = cut == null ? [] : [new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)];
 }
 
-function applyLook(model: LoadedModel, visible: Record<SysKey, boolean>, xray: boolean, selected: THREE.Mesh | null, flagged: Set<string>) {
+function applyLook(model: LoadedModel, visible: Record<SysKey, boolean>, xray: boolean, selected: THREE.Mesh | null, flagged: Set<string>, kindOn: Partial<Record<string, boolean>> = {}) {
   for (const m of model.parts) {
     const part = partOf(m)!;
-    m.visible = visible[part.sys];
+    m.visible = visible[part.sys] && (!part.kind || kindOn[part.kind] !== false);
     m.material = m === selected ? HILITE : part.asset && flagged.has(part.asset) ? FLAG : xray ? GHOST[part.sys] : (m.userData.baseMaterial as THREE.Material);
   }
+}
+
+/**
+ * Render one fixed view. Elevations and plan use an orthographic camera (true proportions, like a
+ * drawing); the 3D view uses perspective from the front-right corner. Canvas size, camera and
+ * pixel ratio are put back afterwards, so the live view is untouched.
+ */
+function shoot(gl: THREE.WebGLRenderer, scene: THREE.Scene, persp: THREE.PerspectiveCamera, s: THREE.Vector3, view: ShotView, w: number, h: number) {
+  const aspect = w / h;
+  const c = new THREE.Vector3(0, s.y / 2, 0);
+  const pad = 1.08;
+  let cam: THREE.Camera;
+  if (view === "iso") {
+    const p = persp.clone();
+    p.aspect = aspect;
+    const dir = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
+    const corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(((i & 1) - 0.5) * s.x, (i & 2 ? 1 : 0) * s.y, (((i >> 2) & 1) - 0.5) * s.z));
+    // start from the bounding sphere, then pull in until the box corners just fill the frame
+    let d = s.length() / 2 / Math.sin((p.fov * Math.PI) / 360);
+    for (let k = 0; k < 4; k++) {
+      p.near = d / 100;
+      p.far = d * 10;
+      p.position.copy(c).addScaledVector(dir, d);
+      p.up.set(0, 1, 0);
+      p.lookAt(c);
+      p.updateProjectionMatrix();
+      p.updateMatrixWorld();
+      const m = Math.max(...corners.map((v) => v.clone().project(p)).map((v) => Math.max(Math.abs(v.x), Math.abs(v.y))));
+      d *= m * pad;
+    }
+    p.position.copy(c).addScaledVector(dir, d);
+    p.updateMatrixWorld();
+    cam = p;
+  } else {
+    // half extents seen on screen (a across, b up) and the depth behind
+    const [a, b, depth] = view === "front" ? [s.x / 2, s.y / 2, s.z] : view === "side" ? [s.z / 2, s.y / 2, s.x] : [s.x / 2, s.z / 2, s.y];
+    const half = Math.max(a, b * aspect) * pad;
+    const o = new THREE.OrthographicCamera(-half, half, half / aspect, -half / aspect, 0.01, depth * 4 + 10);
+    const far = depth * 2 + 5;
+    if (view === "front") o.position.set(0, c.y, far);
+    else if (view === "side") o.position.set(far, c.y, 0);
+    else {
+      o.position.set(0, s.y + far, 0);
+      o.up.set(0, 0, -1);
+    }
+    o.lookAt(view === "top" ? new THREE.Vector3(0, 0, 0) : c);
+    o.updateProjectionMatrix();
+    cam = o;
+  }
+  const size = gl.getSize(new THREE.Vector2());
+  const ratio = gl.getPixelRatio();
+  const clear = gl.getClearColor(new THREE.Color());
+  const alpha = gl.getClearAlpha();
+  // a clean picture: no grid, and a paper-white background (the live canvas is transparent → black in JPEG)
+  const grids: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.visible && o.type === "GridHelper") grids.push(o);
+  });
+  for (const g of grids) g.visible = false;
+  gl.setClearColor("#ffffff", 1);
+  gl.setPixelRatio(1);
+  gl.setSize(w, h, false);
+  gl.render(scene, cam);
+  const url = gl.domElement.toDataURL("image/jpeg", 0.9);
+  gl.setPixelRatio(ratio);
+  gl.setSize(size.x, size.y, false);
+  gl.setClearColor(clear, alpha);
+  for (const g of grids) g.visible = true;
+  return url;
+}
+
+function ShooterHandle({ model, onShooter }: { model: LoadedModel; onShooter?: (s: Shooter | null) => void }) {
+  const gl = useThree((st) => st.gl);
+  const scene = useThree((st) => st.scene);
+  const camera = useThree((st) => st.camera) as THREE.PerspectiveCamera;
+  const invalidate = useThree((st) => st.invalidate);
+  useEffect(() => {
+    if (!onShooter) return;
+    onShooter((views, w, h) => {
+      const out = views.map((v) => shoot(gl, scene, camera, model.size, v, w, h));
+      invalidate();
+      return out;
+    });
+    return () => onShooter(null);
+  }, [gl, scene, camera, model, onShooter, invalidate]);
+  return null;
 }
 
 function Fit({ model, fitKey }: { model: LoadedModel; fitKey: number }) {
@@ -92,10 +188,10 @@ function CanvasHandle({ onCanvas }: { onCanvas?: (c: HTMLCanvasElement | null) =
 }
 
 export function ModelScene(p: SceneProps) {
-  const { model, visible, xray, selected, flagged } = p;
+  const { model, visible, xray, selected, flagged, kindOn, labelKey } = p;
 
-  // visibility + materials
-  useEffect(() => applyLook(model, visible, xray, selected, flagged), [model, visible, xray, selected, flagged]);
+  // visibility + materials (labelKey: part systems/kinds were re-labelled)
+  useEffect(() => applyLook(model, visible, xray, selected, flagged, kindOn), [model, visible, xray, selected, flagged, kindOn, labelKey]);
 
   const span = Math.max(model.size.x, model.size.z, 4);
   const grid = useMemo(() => Math.ceil((span * 1.6) / 2) * 2, [span]);
@@ -143,6 +239,7 @@ export function ModelScene(p: SceneProps) {
       <Fit model={model} fitKey={p.fitKey} />
       <Clip cut={p.cut} />
       <CanvasHandle onCanvas={p.onCanvas} />
+      <ShooterHandle model={model} onShooter={p.onShooter} />
     </Canvas>
   );
 }

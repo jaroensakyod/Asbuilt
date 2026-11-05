@@ -7,8 +7,23 @@
 
 import * as THREE from "three";
 import { assetCodeOf, assetCodeOfPath, needsUpright, summarize, systemOfIfcType, systemOfPath, unitScale, type ModelFormat, type SysKey, type ViewFix } from "@/lib/model3d/classify";
+import { isGenericName, KIND_SYS, registeredCode, type PartGroup, type PartKind } from "@/lib/model3d/parts-ai";
 
-export type PartData = { sys: SysKey; asset: string | null; label: string; ifcType?: string };
+export type PartData = {
+  /** system shown (from names, or from the AI label when there is one) */
+  sys: SysKey;
+  /** registered asset code (see relabel), null when none */
+  asset: string | null;
+  label: string;
+  ifcType?: string;
+  /** system guessed from names alone */
+  sys0?: SysKey;
+  /** code-looking text in the names, before checking the registry */
+  code?: string | null;
+  /** id of the group this mesh belongs to (see PartGroup) */
+  gid?: string;
+  kind?: PartKind;
+};
 
 export type LoadedModel = {
   root: THREE.Group;
@@ -17,6 +32,8 @@ export type LoadedModel = {
   /** true when the file was turned from Z-up to Y-up */
   upright: boolean;
   stats: { parts: number; triangles: number; unit: string; size: [number, number, number]; bySys: Record<SysKey, number>; assets: string[] };
+  /** groups of parts, described for AI labelling */
+  groups: PartGroup[];
 };
 
 export type Progress = (stage: "download" | "parse" | "prepare", pct?: number) => void;
@@ -143,7 +160,7 @@ async function parseIfc(data: Uint8Array): Promise<THREE.Group> {
         bg.applyMatrix4(new THREE.Matrix4().fromArray(pg.flatTransformation));
         const m = new THREE.Mesh(bg, matOf(pg.color));
         m.name = label;
-        m.userData.part = { sys, asset, label, ifcType: type } satisfies PartData;
+        m.userData.part = { sys, asset, code: asset, label, ifcType: type } satisfies PartData;
         group.add(m);
       }
     });
@@ -212,10 +229,12 @@ function prepare(obj: THREE.Object3D, fmt: ModelFormat, fix: ViewFix = {}) {
     if (!m.userData.part) {
       const names = namesUp(m);
       const sys = systemOfPath([...names, ...materialNames(m)]);
-      const asset = assetCodeOfPath(names);
-      const label = names.find((n) => !/^(mesh|group|node|object|geometry)?[\s_-]*\d*$/i.test(n)) ?? names[0] ?? "ชิ้นส่วน";
-      m.userData.part = { sys, asset, label } satisfies PartData;
+      const code = assetCodeOfPath(names);
+      const label = names.find((n) => !isGenericName(n)) ?? names[0] ?? "ชิ้นส่วน";
+      m.userData.part = { sys, asset: code, code, label } satisfies PartData;
     }
+    const part = m.userData.part as PartData;
+    part.sys0 ??= part.sys;
     m.userData.baseMaterial = m.material;
     const g = m.geometry;
     triangles += g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3;
@@ -223,6 +242,7 @@ function prepare(obj: THREE.Object3D, fmt: ModelFormat, fix: ViewFix = {}) {
   });
   if (!parts.length) throw new Error("ไม่พบชิ้นส่วนที่มีรูปทรงในไฟล์");
 
+  const groups = groupParts(obj, root, triangles);
   const sum = summarize(parts.map((p) => partOf(p)!));
   const r1 = (n: number) => Math.round(n * 10) / 10;
   return {
@@ -231,7 +251,101 @@ function prepare(obj: THREE.Object3D, fmt: ModelFormat, fix: ViewFix = {}) {
     size,
     upright,
     stats: { parts: sum.parts, triangles: Math.round(triangles), unit, size: [r1(size.x), r1(size.y), r1(size.z)] as [number, number, number], bySys: sum.bySys, assets: sum.assets },
+    groups,
   } satisfies LoadedModel;
+}
+
+// ---------- groups (for AI labelling) ----------
+
+const trisOf = (m: THREE.Mesh) => {
+  const g = m.geometry;
+  const n = g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3;
+  return (m as THREE.InstancedMesh).isInstancedMesh ? n * (m as THREE.InstancedMesh).count : n;
+};
+
+/**
+ * Split the model into groups worth labelling: start from the file's top level and open up any
+ * group that holds more than `share` of all triangles (a whole floor, the whole building …),
+ * as long as the list stays under `max`. Every mesh gets the id of its group.
+ */
+function groupParts(obj: THREE.Object3D, root: THREE.Object3D, total: number, share = 0.08, max = 360): PartGroup[] {
+  const tris = new Map<THREE.Object3D, number>();
+  const count = (o: THREE.Object3D): number => {
+    let n = (o as THREE.Mesh).isMesh ? trisOf(o as THREE.Mesh) : 0;
+    for (const c of o.children) n += count(c);
+    tris.set(o, n);
+    return n;
+  };
+  count(obj);
+  const ids = new Map<THREE.Object3D, string>([[obj, "r"]]);
+  const kids = (o: THREE.Object3D) =>
+    o.children
+      .map((c, i) => {
+        ids.set(c, `${ids.get(o)}.${i}`);
+        return c;
+      })
+      .filter((c) => (tris.get(c) ?? 0) > 0);
+  let groups = (obj as THREE.Mesh).isMesh ? [obj] : kids(obj);
+  for (;;) {
+    const big = groups
+      .filter((g) => !(g as THREE.Mesh).isMesh && (tris.get(g) ?? 0) > share * total && kids(g).length > 1)
+      .sort((a, b) => (tris.get(b) ?? 0) - (tris.get(a) ?? 0))[0];
+    if (!big) break;
+    const open = kids(big);
+    if (groups.length - 1 + open.length > max) break;
+    groups = groups.flatMap((g) => (g === big ? open : [g]));
+  }
+  if (!groups.length) groups = [obj];
+
+  root.updateMatrixWorld(true);
+  const set = new Set(groups);
+  const out: PartGroup[] = [];
+  for (const g of groups) {
+    const id = ids.get(g)!;
+    const box = new THREE.Box3().setFromObject(g);
+    const sz = box.getSize(new THREE.Vector3());
+    const names = new Set<string>();
+    for (let p: THREE.Object3D | null = g; p && p !== root; p = p.parent) if (p.name && !isGenericName(p.name)) names.add(p.name);
+    let meshes = 0;
+    let color: string | undefined;
+    g.traverse((o) => {
+      if (o !== g && o.name && !isGenericName(o.name) && names.size < 6) names.add(o.name);
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      meshes++;
+      // the mesh belongs to the nearest group above it
+      let p: THREE.Object3D | null = m;
+      while (p && !set.has(p)) p = p.parent;
+      if (p === g) (m.userData.part as PartData).gid = id;
+      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial | undefined;
+      color ??= mat?.color ? `#${mat.color.getHexString()}` : undefined;
+    });
+    const r = (n: number) => Math.round(n * 100) / 100;
+    out.push({ id, names: [...names], size: [r(sz.x), r(sz.z), r(sz.y)], base: r(box.min.y), top: r(box.max.y), tris: Math.round(tris.get(g) ?? 0), meshes, color });
+  }
+  return out;
+}
+
+export type Labels = { known: ReadonlySet<string>; kinds?: Record<string, PartKind> };
+
+/**
+ * Apply the company's asset registry and the AI labels to the parts (mutates part data) and
+ * return the counts for the side panel. Cheap enough to run whenever either changes.
+ */
+export function relabel(model: LoadedModel, { known, kinds }: Labels) {
+  const unregistered = new Set<string>();
+  const byKind: Partial<Record<PartKind, number>> = {};
+  for (const m of model.parts) {
+    const p = partOf(m)!;
+    p.asset = registeredCode(p.code, known);
+    if (p.code && !p.asset) unregistered.add(p.code);
+    p.kind = p.gid ? kinds?.[p.gid] : undefined;
+    // a name that clearly says the system (แอร์, ไฟฟ้า …) beats the AI's guess from size
+    p.sys = p.kind && (p.sys0 ?? "arch") === "arch" ? KIND_SYS[p.kind] : (p.sys0 ?? p.sys);
+    if (p.kind) byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
+  }
+  const sum = summarize(model.parts.map((p) => partOf(p)!));
+  return { stats: { ...model.stats, bySys: sum.bySys, assets: sum.assets }, byKind, unregistered: [...unregistered].sort() };
 }
 
 export async function loadModel(url: string, fmt: ModelFormat, fix: ViewFix = {}, onProgress?: Progress): Promise<LoadedModel> {
