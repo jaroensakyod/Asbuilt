@@ -101,7 +101,7 @@ export function ReportsView() {
           <button
             type="button"
             onClick={exportCsv}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98]"
+            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98]"
           >
             <Download size={16} strokeWidth={1.5} />
             ส่งออก CSV

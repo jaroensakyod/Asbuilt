@@ -120,7 +120,7 @@ export function RepairReportForm({ token, projectId, onDone }: { token: string; 
         <button
           type="submit"
           disabled={!valid || busy}
-          className="h-10 rounded-[8px] bg-ink px-5 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-10 rounded-[8px] bg-ink px-5 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "กำลังส่ง" : "ส่งเรื่องแจ้งซ่อม"}
         </button>

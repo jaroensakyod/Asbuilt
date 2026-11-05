@@ -51,7 +51,7 @@ export function CostDetail({ projectId }: { projectId: string }) {
         </Link>
         <div className="flex items-center gap-2">
           <Button href={`/projects/${p.id}`}>ข้อมูลโครงการ</Button>
-          <Link href={`/purchasing?new=1&project=${p.id}`} className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]">
+          <Link href={`/purchasing?new=1&project=${p.id}`} className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]">
             <Plus {...I} />
             ใบขอซื้อสำหรับโครงการนี้
           </Link>

@@ -140,7 +140,7 @@ export function Btn({
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-[8px] font-medium transition-[background-color,transform,opacity] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
         small ? "h-8 px-3 text-[13px]" : "h-9 px-4 text-[14px]",
-        primary ? "bg-ink text-card hover:bg-[#3a332b]" : danger ? "border border-line-strong bg-card text-neg hover:bg-neg-soft" : "border border-line-strong bg-card text-ink hover:bg-raised",
+        primary ? "bg-ink text-card hover:bg-[#253d5c]" : danger ? "border border-line-strong bg-card text-neg hover:bg-neg-soft" : "border border-line-strong bg-card text-ink hover:bg-raised",
       )}
     >
       {children}

@@ -113,7 +113,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 const btn = "inline-flex h-9 items-center gap-2 rounded-[8px] px-4 text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]";
-const btnPrimary = cx(btn, "bg-ink text-card hover:bg-[#3a332b]");
+const btnPrimary = cx(btn, "bg-ink text-card hover:bg-[#253d5c]");
 const btnGhost = cx(btn, "border border-line-strong bg-card text-ink hover:bg-raised");
 const iconBtn = "grid size-8 place-items-center rounded-[8px] text-ink-3 transition-colors duration-150 hover:bg-raised hover:text-ink";
 

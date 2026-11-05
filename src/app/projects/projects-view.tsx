@@ -24,7 +24,7 @@ export function ProjectsView() {
   const [province, setProvince] = useState("");
   const [pm, setPm] = useState("");
   const [model, setModel] = useState("");
-  const [view, setView] = useState<"table" | "cards">("table");
+  const [view, setView] = useState<"table" | "cards">("cards");
   const [formOpen, setFormOpen] = useState(sp.get("new") === "1");
   const [created, setCreated] = useState<string | null>(null);
 
@@ -65,7 +65,7 @@ export function ProjectsView() {
           <button
             type="button"
             onClick={() => setFormOpen(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98]"
+            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98]"
           >
             <Plus size={16} strokeWidth={1.5} />
             สร้างโครงการ

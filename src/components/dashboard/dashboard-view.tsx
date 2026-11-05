@@ -4,7 +4,7 @@ import { surveys } from "@/lib/design/store";
 import { satisfactionScore } from "@/lib/design/satisfaction";
 // Client page: in live mode it renders the signed-in company's data.
 import Link from "next/link";
-import { ArrowRight, Box, MapPin, Plus, TriangleAlert, UserRound } from "lucide-react";
+import { Building2, ChartGantt, NotebookPen, ShoppingCart, ArrowRight, Box, MapPin, Plus, TriangleAlert, UserRound } from "lucide-react";
 import { Page } from "@/components/shell/topbar";
 import { Button, Card, CardHead, PlanBar, Status, cx } from "@/components/ui";
 import { HouseThumb } from "@/components/house-thumb";
@@ -131,10 +131,10 @@ export function DashboardView() {
   return (
     <Page trail={[{ label: "ภาพรวม" }]}>
       <PrintStyles />
-      <div className="flex flex-wrap items-end justify-between gap-4 pb-6">
+      <div className="dashboard-hero flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="text-[13px] text-ink-3">{thLongDate(TODAY)}</p>
-          <h1 className="mt-1 text-[30px] font-normal leading-[1.15]">ภาพรวมบริษัท</h1>
+          <h1 className="mt-1 text-[30px] font-normal leading-[1.15]">ทุกโครงการ ชัดเจนในที่เดียว</h1>
           <p className="mt-2 text-[13px] text-ink-2">
             {COMPANY_INFO.name} · ดำเนินงานมา {year + 543 - COMPANY_INFO.since} ปี · กำลังก่อสร้าง {active.length} โครงการ · อยู่ในระยะรับประกัน {inWarranty.length} หลัง
           </p>
@@ -152,6 +152,14 @@ export function DashboardView() {
         </div>
       </div>
 
+      <nav aria-label="ทางลัดงานประจำวัน" className="quick-links">
+        {[
+          { href: "/projects", label: "โครงการทั้งหมด", sub: "ติดตามงานทุกขั้นตอน", icon: Building2 },
+          { href: "/schedule", label: "แผนงานก่อสร้าง", sub: "จัดการเวลาและความคืบหน้า", icon: ChartGantt },
+          { href: "/diary", label: "รายงานหน้างาน", sub: "บันทึกความคืบหน้าวันนี้", icon: NotebookPen },
+          { href: "/purchasing", label: "จัดซื้อวัสดุ", sub: "ใบขอซื้อและใบสั่งซื้อ", icon: ShoppingCart },
+        ].map(({ href, label, sub, icon: Icon }) => <Link href={href} key={href} className="quick-link"><Icon size={20} /><span>{label}<small>{sub}</small></span><ArrowRight /></Link>)}
+      </nav>
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi

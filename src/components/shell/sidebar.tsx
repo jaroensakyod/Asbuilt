@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandMark } from "@/components/brand";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -213,6 +214,14 @@ export function openSearch() {
 export function Sidebar() {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => {
+    const open = () => { setCollapsed(false); setMobileOpen(v => !v); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
+    window.addEventListener("asbuilt:mobile-nav", open);
+    window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("asbuilt:mobile-nav", open); window.removeEventListener("keydown", escape); };
+  }, []);
   const openRepairs = useRepairs().filter((r) => r.status !== "closed").length;
   const notes = useNotifications();
   const readIds = useReadIds();
@@ -262,16 +271,15 @@ export function Sidebar() {
   };
 
   return (
-    <aside data-shell className={cx("sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-line bg-deep transition-[width] duration-200", collapsed ? "w-[60px]" : "w-[248px]")}>
-      <div className={cx("flex h-14 items-center gap-2.5", collapsed ? "justify-center px-0" : "px-5")}>
-        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="shrink-0">
-          <path d="M2 9.5 10 3l8 6.5V17H2z" fill="none" stroke="var(--text)" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M7 17v-5h6v5" fill="none" stroke="var(--accent)" strokeWidth="1.5" />
-        </svg>
+    <>
+      {mobileOpen && <button type="button" className="mobile-nav-backdrop" aria-label="ปิดเมนูหลัก" onClick={() => setMobileOpen(false)} />}
+    <aside data-shell className={cx(mobileOpen && "mobile-open","app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-line bg-deep transition-[width] duration-200", collapsed ? "w-[60px]" : "w-[248px]")}>
+      <div className={cx("flex h-[82px] items-center gap-3", collapsed ? "justify-center px-0" : "px-5")}>
+        <Link href="/" aria-label="หน้าหลัก Asbuilt"><BrandMark className="shrink-0" /></Link>
         {!collapsed && (
           <>
-            <span className="text-[17px] font-medium leading-none">Asbuilt</span>
-            <span className="text-[13px] leading-none text-ink-3">แฟ้มบ้าน</span>
+            <span className="sidebar-expanded text-[21px] font-semibold tracking-tight leading-none">Asbuilt<span className="block mt-1.5 text-[9px] font-normal tracking-[.17em] text-ink-3">BUILD WITH CLARITY</span></span>
+
           </>
         )}
       </div>
@@ -321,11 +329,14 @@ export function Sidebar() {
                   <li key={it.href}>
                     <Link
                       href={it.href}
-                      title={collapsed ? it.label : undefined}
+                      onClick={() => setMobileOpen(false)}
+                      title={it.label}
+                      aria-label={it.label}
+                      aria-current={active ? "page" : undefined}
                       className={cx(
                         "relative flex h-9 items-center gap-2.5 rounded-[8px] transition-colors duration-150",
                         collapsed ? "justify-center" : "px-2",
-                        active ? "bg-card text-ink shadow-[inset_0_0_0_1px_var(--line-strong)]" : "text-ink-2 hover:bg-card/60 hover:text-ink",
+                        active ? "nav-active" : "text-ink-2 hover:bg-card/60 hover:text-ink",
                       )}
                     >
                       <Icon size={16} strokeWidth={1.5} className={active ? "text-ink" : "text-ink-3"} />
@@ -347,7 +358,7 @@ export function Sidebar() {
       </nav>
 
       {!collapsed && (
-        <a href={`tel:${COMPANY_INFO.hotline}`} className="mx-3 mb-3 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3 py-2.5 transition-colors duration-150 hover:border-line-strong">
+        <a href={`tel:${COMPANY_INFO.hotline}`} className="sidebar-expanded mx-3 mb-3 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3 py-2.5 transition-colors duration-150 hover:border-line-strong">
           <Phone size={16} strokeWidth={1.5} className="text-ink-3" />
           <span className="text-[13px] text-ink-2">สายด่วนบริการ</span>
           <span className="num ml-auto font-mono text-[13px]">{COMPANY_INFO.hotline}</span>
@@ -357,15 +368,15 @@ export function Sidebar() {
       <div className={cx("flex items-center border-t border-line py-3", collapsed ? "flex-col gap-2 px-2" : "gap-3 px-4")}>
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-card text-[13px] text-ink-2 shadow-[inset_0_0_0_1px_var(--line-strong)]">{me.initials}</span>
         {!collapsed && (
-          <div className="min-w-0 flex-1 leading-tight">
+          <div className="sidebar-expanded min-w-0 flex-1 leading-tight">
             <p className="truncate text-[14px]">{me.name}</p>
             <p className="truncate text-[12px] text-ink-3">{me.roleLabel}</p>
           </div>
         )}
-        <button type="button" onClick={toggle} aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"} className="rounded-[6px] p-1.5 text-ink-3 transition-colors duration-150 hover:bg-card hover:text-ink">
+        <button type="button" onClick={toggle} aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"} className="sidebar-collapse rounded-[6px] p-1.5 text-ink-3 transition-colors duration-150 hover:bg-card hover:text-ink">
           {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.5} /> : <PanelLeftClose size={16} strokeWidth={1.5} />}
         </button>
       </div>
-    </aside>
+    </aside></>
   );
 }

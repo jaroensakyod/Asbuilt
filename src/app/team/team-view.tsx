@@ -90,7 +90,7 @@ export function TeamView() {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-8 items-center gap-2 rounded-[8px] bg-ink px-3 text-[13px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]"
+            className="inline-flex h-8 items-center gap-2 rounded-[8px] bg-ink px-3 text-[13px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]"
           >
             {open ? <X size={16} strokeWidth={1.5} /> : <UserPlus size={16} strokeWidth={1.5} />}
             {open ? "ปิด" : "เชิญผู้ใช้"}
@@ -121,7 +121,7 @@ export function TeamView() {
             <input name="skill" className={inputCls} placeholder="ไม่บังคับ" />
           </Field>
           <div className="flex flex-col justify-end gap-1">
-            <button type="submit" className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]">
+            <button type="submit" className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]">
               ส่งคำเชิญ
             </button>
           </div>

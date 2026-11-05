@@ -22,7 +22,7 @@ import { Thread, Composer } from "./message-thread";
 import type { PortalApi } from "./portal-data";
 
 const btn = "inline-flex h-10 items-center justify-center gap-1.5 rounded-[8px] border border-line-strong bg-card px-4 text-[14px] text-ink transition-colors duration-150 hover:bg-raised disabled:opacity-40";
-const btnPrimary = "inline-flex h-10 items-center justify-center gap-1.5 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98] disabled:opacity-40";
+const btnPrimary = "inline-flex h-10 items-center justify-center gap-1.5 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98] disabled:opacity-40";
 const area = "min-h-[72px] w-full rounded-[8px] border border-line-strong bg-card px-3 py-2 text-[14px] outline-none placeholder:text-ink-3 focus:border-ink-3";
 const b = (n: number) => `฿${money(n)}`;
 const sb = (n: number) => (n === 0 ? "ไม่มีส่วนต่าง" : `${n > 0 ? "+" : "−"}฿${money(Math.abs(n))}`);

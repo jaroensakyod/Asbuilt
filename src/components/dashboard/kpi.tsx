@@ -23,7 +23,7 @@ export function Kpi({
 }) {
   const Icon = change?.dir === "up" ? ArrowUpRight : change?.dir === "down" ? ArrowDownRight : null;
   const body = (
-    <Card className={cx("flex h-full flex-col px-4 py-3.5", href && "transition-colors duration-150 group-hover:border-line-strong")}>
+    <Card className={cx("flex h-full flex-col px-5 py-5", href && "transition-colors duration-150 group-hover:border-line-strong")}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] text-ink-2">{label}</p>
         {change && (
@@ -39,7 +39,7 @@ export function Kpi({
         )}
       </div>
       <p className="mt-1.5 flex items-baseline gap-1.5">
-        <span className="num text-[26px] font-medium leading-none">{value}</span>
+        <span className="num text-[32px] font-semibold leading-none">{value}</span>
         {unit && <span className="text-[13px] text-ink-3">{unit}</span>}
       </p>
       {note && <p className="mt-2 text-[12px] leading-[18px] text-ink-3">{note}</p>}

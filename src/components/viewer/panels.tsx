@@ -282,7 +282,7 @@ export function RealPanel({ project, model, repairs, onCompare, onPick }: { proj
         <section className="rounded-[14px] border border-line bg-card px-4 py-3.5">
           <p className="text-[14px] font-medium">กำลังแสดงแบบที่ออกแบบ (100%)</p>
           <p className="mt-1 text-[13px] text-ink-2">บ้านจริงยังก่อสร้างอยู่ ดูสภาพหน้างาน ณ วันใดก็ได้ในโหมดเปรียบเทียบ</p>
-          <button type="button" onClick={onCompare} className="mt-3 flex h-9 w-full items-center justify-center rounded-[8px] bg-ink text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]">
+          <button type="button" onClick={onCompare} className="mt-3 flex h-9 w-full items-center justify-center rounded-[8px] bg-ink text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]">
             เปรียบเทียบกับหน้างาน
           </button>
         </section>
@@ -741,7 +741,7 @@ export function SelectionCard({ model, selection, repairs, onClose, projectId }:
             <span className="block text-ink">{r.title}</span>
           </Link>
         ))}
-        <Link href={`/repairs?new=${encodeURIComponent(a.code)}&project=${encodeURIComponent(projectId)}`} className="mt-3 flex h-9 items-center justify-center rounded-[8px] bg-ink text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]">
+        <Link href={`/repairs?new=${encodeURIComponent(a.code)}&project=${encodeURIComponent(projectId)}`} className="mt-3 flex h-9 items-center justify-center rounded-[8px] bg-ink text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]">
           แจ้งซ่อมจุดนี้
         </Link>
       </>
