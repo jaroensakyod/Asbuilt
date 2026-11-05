@@ -1,13 +1,21 @@
 "use client";
 
+import { onTenantLoad } from "@/lib/workspace";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { Field, inputCls } from "@/components/ui";
 import { HouseThumb } from "@/components/house-thumb";
-import { getHouseModel, houseModels, MODEL_TYPE_LABEL, projects, TODAY, type Project } from "@/lib/data";
+import { getHouseModel, houseModels, MODEL_TYPE_LABEL, projects, TODAY, type Project, team } from "@/lib/data";
 import { addProject, PROVINCES } from "@/lib/projects-store";
 
-const PMS = Array.from(new Set(projects.map((p) => p.pm)));
+// recomputed when a company is loaded, so live mode lists that company's PMs
+const PMS: string[] = [];
+const fillPms = () => {
+  const fromTeam = team.filter((m) => m.active && (m.role === "pm" || m.role === "engineer" || m.role === "admin")).map((m) => m.name);
+  PMS.splice(0, PMS.length, ...new Set([...projects.map((p) => p.pm), ...fromTeam].filter(Boolean)));
+};
+fillPms();
+onTenantLoad(fillPms);
 
 export function NewProjectForm({ onClose, onCreated, existingIds }: { onClose: () => void; onCreated: (p: Project) => void; existingIds: string[] }) {
   const first = houseModels.find((m) => m.code === "HM-01") ?? houseModels[0];
@@ -19,7 +27,7 @@ export function NewProjectForm({ onClose, onCreated, existingIds }: { onClose: (
     address: "",
     start: "2026-12-01",
     value: String(Math.round(((first.priceMin + first.priceMax) / 2) * 10) / 10),
-    pm: PMS[0],
+    pm: PMS[0] ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const m = getHouseModel(f.modelCode);

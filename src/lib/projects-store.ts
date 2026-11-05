@@ -3,7 +3,8 @@
 // through useSyncExternalStore.
 
 import { useSyncExternalStore } from "react";
-import { getHouseModel, TODAY, type Project } from "./data";
+import { getHouseModel, TODAY, projects, type Project } from "./data";
+import { isLiveReady, onTenantLoad, upsertRow, deleteRow, type TenantRows } from "./workspace";
 
 export type LocalStore<T> = {
   get: () => T;
@@ -12,13 +13,30 @@ export type LocalStore<T> = {
   use: () => T;
 };
 
-export function createLocalStore<T>(key: string, fallback: T): LocalStore<T> {
+/**
+ * Live-mode sync: when a company is loaded the store is filled by `hydrate`
+ * (in memory only) and every change is passed to `onChange` to persist it.
+ */
+export type StoreSync<T> = {
+  hydrate: (rows: TenantRows) => T;
+  onChange: (prev: T, next: T) => void;
+};
+
+export function createLocalStore<T>(key: string, fallback: T, sync?: StoreSync<T>): LocalStore<T> {
   const listeners = new Set<() => void>();
   let raw: string | null | undefined;
   let cache: T = fallback;
+  let live: { value: T } | null = null;
+
+  if (sync)
+    onTenantLoad((rows) => {
+      live = { value: sync.hydrate(rows) };
+      listeners.forEach((fn) => fn());
+    });
 
   const read = (): T => {
     if (typeof window === "undefined") return fallback;
+    if (isLiveReady() || live) return live ? live.value : fallback;
     let next: string | null = null;
     try {
       next = window.localStorage.getItem(key);
@@ -40,6 +58,13 @@ export function createLocalStore<T>(key: string, fallback: T): LocalStore<T> {
 
   const set = (v: T | ((prev: T) => T)) => {
     const value = typeof v === "function" ? (v as (prev: T) => T)(read()) : v;
+    if (isLiveReady()) {
+      const prev = read();
+      live = { value };
+      sync?.onChange(prev, value);
+      emit();
+      return;
+    }
     try {
       window.localStorage.setItem(key, JSON.stringify(value));
     } catch {
@@ -86,7 +111,35 @@ export type NewProjectInput = {
 };
 
 const EMPTY: Project[] = [];
-export const localProjects = createLocalStore<Project[]>("asbuilt.projects.v1", EMPTY);
+/** Persist array items by id: upsert changed or new items, delete removed ones. */
+export function syncById<T extends { id: string }>(table: Parameters<typeof upsertRow>[0], toRow: (item: T) => Record<string, unknown>): StoreSync<T[]>["onChange"] {
+  return (prev, next) => {
+    const before = new Map(prev.map((x) => [x.id, x]));
+    const after = new Set(next.map((x) => x.id));
+    for (const item of next) if (before.get(item.id) !== item) void upsertRow(table, toRow(item));
+    for (const id of before.keys()) if (!after.has(id)) void deleteRow(table, id);
+  };
+}
+
+export const projectRow = (p: Project) => ({ id: p.id, status: p.status, model_code: p.modelCode, data: p });
+
+// Live mode: tenant projects live in the shared `projects` array (filled from the DB);
+// projects created in this session are kept here and written to the projects table.
+export const localProjects = createLocalStore<Project[]>("asbuilt.projects.v1", EMPTY, {
+  hydrate: () => [],
+  onChange: syncById<Project>("projects", projectRow),
+});
+
+/** Update a stored project record in either mode. */
+export function saveProject(p: Project) {
+  const i = projects.findIndex((x) => x.id === p.id);
+  if (i >= 0) {
+    projects[i] = p;
+    if (isLiveReady()) void upsertRow("projects", projectRow(p));
+    return;
+  }
+  localProjects.set((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+}
 
 export function useLocalProjects() {
   return localProjects.use();

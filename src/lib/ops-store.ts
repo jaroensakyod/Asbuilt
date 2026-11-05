@@ -3,6 +3,7 @@
 // SSR-safe: the server snapshot is the seed only; the client snapshot adds local changes after hydration.
 
 import { useSyncExternalStore } from "react";
+import { isLiveReady, onTenantLoad, upsertRow, deleteRow, type Table } from "@/lib/workspace";
 import { TODAY, getProject, type RepairStatus, type WorkOrderStatus } from "@/lib/data";
 import {
   addDays,
@@ -68,6 +69,11 @@ function load(): State {
 
 function commit(next: State) {
   state = next;
+  if (isLiveReady()) {
+    // live mode: the database is the source of truth, nothing is kept in localStorage
+    listeners.forEach((l) => l());
+    return;
+  }
   try {
     window.localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
@@ -113,13 +119,54 @@ function current<K extends Kind>(k: K) {
   return merged(load(), k);
 }
 
+// ---------- live mode: write-through to Supabase ----------
+
+const TABLE: Record<Kind, Table> = { repairs: "repairs", inspections: "inspections", workOrders: "work_orders", maintenance: "maintenance" };
+
+function rowOf(k: Kind, item: Record<string, unknown>) {
+  const base = { id: item.id, project_id: item.projectId ?? null, data: item };
+  if (k === "repairs") return { ...base, asset: item.asset ?? null, status: item.status ?? null, severity: item.severity ?? null };
+  if (k === "inspections") return { ...base, date: item.date ?? null, result: item.result ?? null };
+  if (k === "workOrders") return { ...base, repair_id: item.repairId ?? null, status: item.status ?? null };
+  return { ...base, date: item.date ?? null };
+}
+
+function liveUpsert<K extends Kind>(k: K, item: Item<K> & { id: string }) {
+  const base = SEED[k] as unknown as (Item<K> & { id: string })[];
+  const i = base.findIndex((x) => x.id === item.id);
+  if (i >= 0) base[i] = item;
+  else base.push(item);
+  commit({ ...load(), [k]: { up: {}, del: [] } });
+  void upsertRow(TABLE[k], rowOf(k, item as unknown as Record<string, unknown>));
+}
+
+function liveRemove(k: Kind, id: string) {
+  const base = SEED[k] as unknown as { id: string }[];
+  const i = base.findIndex((x) => x.id === id);
+  if (i >= 0) base.splice(i, 1);
+  commit({ ...load(), [k]: { up: {}, del: [] } });
+  void deleteRow(TABLE[k], id);
+}
+
+onTenantLoad((rows) => {
+  const swap = (arr: unknown[], next: unknown[]) => arr.splice(0, arr.length, ...next);
+  swap(SEED.repairs, rows.repairs);
+  swap(SEED.inspections, rows.inspections);
+  swap(SEED.workOrders, rows.workOrders);
+  swap(SEED.maintenance, rows.maintenance);
+  state = empty();
+  listeners.forEach((l) => l());
+});
+
 function upsert<K extends Kind>(k: K, item: Item<K> & { id: string }) {
+  if (isLiveReady()) return liveUpsert(k, item);
   const s = load();
   const c = s[k] as Coll<Item<K>>;
   commit({ ...s, [k]: { up: { ...c.up, [item.id]: item }, del: c.del.filter((d) => d !== item.id) } });
 }
 
 function remove<K extends Kind>(k: K, id: string) {
+  if (isLiveReady()) return liveRemove(k, id);
   const s = load();
   const c = s[k] as Coll<Item<K>>;
   const up = { ...c.up };

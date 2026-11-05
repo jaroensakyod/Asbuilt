@@ -13,6 +13,8 @@ import { areaCls, Btn, Empty, I, Initials, Pill, PrintStyle, SEV_TONE, useHydrat
 import { DocHeader, DocRow, DocSection, Signatures } from "./doc";
 import { FloorPlan } from "./floor-plan";
 import { BILLING_LABEL, WO_TONE } from "./work-orders-view";
+import { MediaStrip } from "@/components/media/media-field";
+import { ChargeBox, CheckInBox, ChecklistBox, CloseBox, PartsBox, PhotosBox, SignBox, useSvc } from "@/components/field/wo-service";
 
 const baht = (n: number) => `฿${n.toLocaleString("th-TH")}`;
 
@@ -41,6 +43,7 @@ function Sheet({ wo }: { wo: OpsWorkOrder }) {
   const tech = team.find((m) => m.name === wo.technician);
   const issuer = team.find((m) => m.name === wo.issuedBy);
   const closed = wo.status === "done" || wo.status === "cancelled";
+  const svc = useSvc(wo);
 
   const [hours, setHours] = useState(wo.hours !== undefined ? String(wo.hours) : "");
   const [cost, setCost] = useState(wo.cost !== undefined ? String(wo.cost) : "");
@@ -190,7 +193,32 @@ function Sheet({ wo }: { wo: OpsWorkOrder }) {
               <DocRow k="ช่าง">{wo.technician}</DocRow>
             </div>
             <DocRow k="สรุปการซ่อม">{wo.summary ?? <span className="block h-10 border-b border-dashed border-line-strong" />}</DocRow>
-            <DocRow k="อะไหล่ที่เปลี่ยน">{wo.parts ?? <span className="block h-10 border-b border-dashed border-line-strong" />}</DocRow>
+            <DocRow k="อะไหล่ที่เปลี่ยน">
+              {svc.parts.length ? svc.parts.map((x) => `${x.name} × ${x.qty} ${x.unit}`).join(", ") : (wo.parts ?? <span className="block h-10 border-b border-dashed border-line-strong" />)}
+            </DocRow>
+            {(svc.checkIn || svc.checkOut) && (
+              <DocRow k="เข้า-ออกหน้างาน">
+                <span className="font-mono">{svc.checkIn?.at ?? "–"}</span> ถึง <span className="font-mono">{svc.checkOut?.at ?? "–"}</span>
+                {svc.checkIn?.dist !== undefined && <span className="text-ink-3"> · GPS ห่างหมุด {svc.checkIn.dist} ม.</span>}
+              </DocRow>
+            )}
+            {svc.charge && (
+              <DocRow k="ค่าบริการหน้างาน">
+                {baht(svc.charge.amount)} {svc.charge.paid ? `· ชำระแล้ว ${svc.charge.paidAt ?? ""}` : "· ยังไม่ชำระ"}
+              </DocRow>
+            )}
+            {(svc.before.length > 0 || svc.after.length > 0) && (
+              <div className="mt-2 grid grid-cols-2 gap-4 text-[12px] text-ink-3">
+                <div>
+                  ก่อนซ่อม
+                  <MediaStrip refs={svc.before} size={72} />
+                </div>
+                <div>
+                  หลังซ่อม
+                  <MediaStrip refs={svc.after} size={72} />
+                </div>
+              </div>
+            )}
             <div className="mt-2 text-[12px] text-ink-2">
               {wo.log.slice(0, 5).map((l, i) => (
                 <p key={i}>
@@ -201,7 +229,15 @@ function Sheet({ wo }: { wo: OpsWorkOrder }) {
             </div>
           </DocSection>
 
-          <Signatures roles={[{ role: "ลูกค้า / ผู้รับงาน", name: p?.owner }, { role: "ช่างผู้ปฏิบัติงาน", name: wo.technician }, { role: "หัวหน้างาน / ผู้ตรวจรับ", name: wo.issuedBy }]} />
+          {svc.signature && (
+            <div className="avoid-break mt-6 flex items-end gap-3 text-[12px] text-ink-2">
+              <MediaStrip refs={[svc.signature]} size={96} />
+              <span>
+                ลูกค้าเซ็นรับงานบนมือถือ · {svc.signer} · {svc.signedAt}
+              </span>
+            </div>
+          )}
+          <Signatures roles={[{ role: "ลูกค้า / ผู้รับงาน", name: svc.signer ?? p?.owner }, { role: "ช่างผู้ปฏิบัติงาน", name: wo.technician }, { role: "หัวหน้างาน / ผู้ตรวจรับ", name: wo.issuedBy }]} />
         </article>
 
         {/* side panel */}
@@ -253,6 +289,17 @@ function Sheet({ wo }: { wo: OpsWorkOrder }) {
                 </li>
               ))}
             </ul>
+          </Card>
+
+          <Card>
+            <CardHead title="งานภาคสนาม" action={<Link href={`/m/jobs/${wo.id}`} className="text-[13px] text-ink-2 hover:text-ink">เปิดบนมือถือ</Link>} />
+            <CheckInBox wo={wo} />
+            <ChecklistBox wo={wo} />
+            <PhotosBox wo={wo} />
+            <PartsBox wo={wo} />
+            <ChargeBox wo={wo} />
+            <SignBox wo={wo} />
+            <CloseBox wo={wo} surveyOnly />
           </Card>
 
           <Card>

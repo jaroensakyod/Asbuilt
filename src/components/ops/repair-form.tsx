@@ -1,16 +1,32 @@
 "use client";
 
+import { onTenantLoad } from "@/lib/workspace";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { AssetTag, Field, cx, inputCls } from "@/components/ui";
 import { projects, SEVERITY_LABEL, SOURCE_LABEL, SYSTEM_LABEL, team, thDate, TODAY, type RepairSource, type Severity } from "@/lib/data";
 import { roomOf } from "@/lib/house";
-import { addRepair, createWorkOrderFromRepair, type OpsRepair, type OpsWorkOrder } from "@/lib/ops-store";
+import { addRepair, createWorkOrderFromRepair, type NewRepair, type OpsRepair, type OpsWorkOrder } from "@/lib/ops-store";
+import { MediaField } from "@/components/media/media-field";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { DefectAssist } from "@/components/ai-field/defect-assist";
+import { defectDetailText, type AssetCandidate } from "@/lib/ai-field/defect";
+import type { MediaRef } from "@/lib/media";
 import { assetLocation, ownerShort, projectAssets, SLA_HOURS, TECH_BY_SYSTEM } from "./seed";
 import { areaCls, Btn, I, Modal } from "./bits";
 
-export const TECHNICIANS = team.filter((m) => m.role === "technician" && m.active).map((m) => m.name);
-export const ASSIGNEES = [...TECHNICIANS, ...team.filter((m) => m.active && (m.role === "foreman" || m.role === "engineer")).map((m) => m.name)];
+// live arrays: refilled when a company is loaded
+export const TECHNICIANS: string[] = [];
+export const ASSIGNEES: string[] = [];
+const fillPeople = () => {
+  TECHNICIANS.splice(0, TECHNICIANS.length, ...team.filter((m) => m.role === "technician" && m.active).map((m) => m.name));
+  const others = team.filter((m) => m.active && (m.role === "foreman" || m.role === "engineer" || m.role === "pm" || m.role === "admin")).map((m) => m.name);
+  ASSIGNEES.splice(0, ASSIGNEES.length, ...new Set([...TECHNICIANS, ...others]));
+  // a company with no technicians yet can still assign work to anyone on the team
+  if (!TECHNICIANS.length) TECHNICIANS.push(...ASSIGNEES);
+};
+fillPeople();
+onTenantLoad(fillPeople);
 
 export type RepairPreset = { asset?: string; project?: string };
 
@@ -31,8 +47,11 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
   const [severity, setSeverity] = useState<Severity>("medium");
   const [source, setSource] = useState<RepairSource>(project?.status === "delivered" ? "customer" : "internal");
   const [reporter, setReporter] = useState(ownerShort(initialProject));
-  const [assignee, setAssignee] = useState(asset ? TECH_BY_SYSTEM[asset.system] : TECHNICIANS[0]);
+  const [assignee, setAssignee] = useState(asset ? TECH_BY_SYSTEM[asset.system] : TECHNICIANS[0] ?? "");
   const [withWo, setWithWo] = useState(false);
+  const [photos, setPhotos] = useState<MediaRef[]>([]);
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
+  const candidates = useMemo<AssetCandidate[]>(() => (model ? assets.filter((a) => a.category !== "เบรกเกอร์ลูกย่อย").map((a) => ({ code: a.code, name: a.name, system: a.system, category: a.category, location: assetLocation(model, a) })) : []), [assets, model]);
 
   const found = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -62,7 +81,9 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
   const valid = !!asset && title.trim().length > 0;
   const save = () => {
     if (!asset || !model || !valid) return;
-    const r = addRepair({
+    // photos ride along on the record (OpsRepair has no photo field yet)
+    const input: NewRepair & { photos?: MediaRef[] } = {
+      photos: photos.length ? photos : undefined,
       title: title.trim(),
       detail: detail.trim(),
       asset: asset.code,
@@ -74,7 +95,8 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
       source,
       assignee,
       reporter: reporter.trim() || undefined,
-    });
+    };
+    const r = addRepair(input);
     const wo = withWo ? createWorkOrderFromRepair(r.id) : undefined;
     onSaved?.(r, wo);
     onClose();
@@ -166,6 +188,28 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
           <Field label="รายละเอียด">
             <textarea value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="สิ่งที่พบ เวลาที่เกิด ความถี่" className={areaCls} />
           </Field>
+        </div>
+        <div className="col-span-2 flex flex-col gap-2">
+          <MediaField value={photos} onChange={setPhotos} label="รูปอาการ (ไม่บังคับ)" photosOnly />
+          <DefectAssist
+            photos={photos}
+            note={[title, detail].filter(Boolean).join(" · ")}
+            context={project?.status === "delivered" ? "repair" : "construction"}
+            assets={candidates}
+            onApply={(s) => {
+              setTitle(s.title);
+              setDetail(defectDetailText(s));
+              setSeverity(s.severity);
+              const f = ["อาการ", "รายละเอียด", "ความรุนแรง"];
+              if (s.asset) {
+                chooseAsset(s.asset.code);
+                setQ(s.asset.code);
+                f.push("อุปกรณ์");
+              }
+              setAiFilled(f);
+            }}
+          />
+          <AiFilledNote fields={aiFilled} />
         </div>
         <div className="col-span-2 flex flex-col gap-1.5 text-[13px] text-ink-2">
           ความรุนแรง
