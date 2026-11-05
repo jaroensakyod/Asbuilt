@@ -44,7 +44,16 @@ export function ModelFilesCard({ projectId }: { projectId: string }) {
         <ul className="divide-y divide-line">
           {files.map((f) => (
             <li key={f.id} className="flex items-center gap-3 px-5 py-2.5">
-              <Box size={16} strokeWidth={1.5} className="shrink-0 text-ink-3" />
+              <Link href={href(f.id)} className="shrink-0" aria-hidden tabIndex={-1}>
+                {f.thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- small data URL saved with the file
+                  <img src={f.thumb} alt="" className="h-10 w-[72px] rounded-[6px] border border-line bg-white object-cover" />
+                ) : (
+                  <span className="flex h-10 w-[72px] items-center justify-center rounded-[6px] border border-line bg-raised text-ink-3">
+                    <Box size={16} strokeWidth={1.5} />
+                  </span>
+                )}
+              </Link>
               <Link href={href(f.id)} className="min-w-0 flex-1 hover:text-ink">
                 <p className="truncate text-[14px]">{f.name}</p>
                 <p className="truncate text-[12px] text-ink-3">
