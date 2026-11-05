@@ -12,6 +12,7 @@ import { PROVINCES } from "@/lib/projects-store";
 import { relDays } from "@/components/dashboard/metrics";
 import { LEAD_SOURCES, leads, newLeadId, quotes, quoteTotals, SALES_PEOPLE, setStage, SOURCE_LABEL, STAGE_LABEL, STAGE_WEIGHT, STAGES, type Lead, type LeadSource, type LeadStage } from "@/lib/sales/crm";
 import { I, mb, STAGE_TONE, Td, Th, theadCls, useCostAccess } from "./common";
+import { PipelineInsightsButton } from "@/components/ai-sales/pipeline-insights";
 
 const OPEN: LeadStage[] = ["new", "contacted", "viewing", "quoted", "negotiating"];
 
@@ -84,12 +85,15 @@ export function LeadsView() {
         title="ลูกค้า & ลีด"
         sub={`${list.length} ลีด · กำลังติดตาม ${kpi.open} ราย · นัดติดตามวันนี้ ${due.length} ราย`}
         actions={
-          editable && (
-            <Btn primary onClick={() => setAdding(true)}>
-              <Plus {...I} />
-              เพิ่มลีด
-            </Btn>
-          )
+          <>
+            <PipelineInsightsButton />
+            {editable && (
+              <Btn primary onClick={() => setAdding(true)}>
+                <Plus {...I} />
+                เพิ่มลีด
+              </Btn>
+            )}
+          </>
         }
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -13,6 +13,8 @@ import type { MediaRef } from "@/lib/media";
 import { useMe } from "@/lib/use-me";
 import { getPosition, MBtn, mInput, MLabel, MShell } from "./bits";
 import { SitePicker, useSite } from "./m-hub";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { DefectAssist, FixCheckAssist } from "@/components/ai-field/defect-assist";
 
 export const PUNCH_TONE: Record<PunchStatus, Tone> = { open: "warn", fixed: "accent", verified: "pos" };
 const TRADES = ["โครงสร้าง", "ก่ออิฐ/ฉาบ", "กระเบื้อง", "สี", "ฝ้า", "ประตู/หน้าต่าง", "ไฟฟ้า", "ประปา", "สุขภัณฑ์", "งานไม้", "หลังคา"];
@@ -86,6 +88,11 @@ export function MPunch() {
                 )}
                 {p.status === "fixed" && (
                   <>
+                    {(p.fixPhotos?.length ?? 0) > 0 && (
+                      <div className="col-span-2">
+                        <FixCheckAssist phone title={p.title} location={p.location} before={p.photos} after={p.fixPhotos ?? []} />
+                      </div>
+                    )}
                     <MBtn primary onClick={() => setPunchStatus(p.id, "verified")}>
                       ตรวจผ่าน
                     </MBtn>
@@ -110,6 +117,7 @@ function AddForm({ projectId, by, onDone }: { projectId: string; by: string; onD
   const [location, setLocation] = useState("");
   const [trade, setTrade] = useState(TRADES[0]);
   const [photos, setPhotos] = useState<MediaRef[]>([]);
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
   return (
     <form
       className="mb-4 flex flex-col gap-3 rounded-[14px] border border-line bg-card p-3"
@@ -135,6 +143,21 @@ function AddForm({ projectId, by, onDone }: { projectId: string; by: string; onD
         </select>
       </MLabel>
       <MediaField value={photos} onChange={setPhotos} label="รูปจุดที่ต้องแก้" photosOnly />
+      <DefectAssist
+        phone
+        photos={photos}
+        note={title}
+        location={location}
+        context="construction"
+        trades={TRADES}
+        onApply={(s) => {
+          setTitle(s.title);
+          if (s.trade) setTrade(s.trade);
+          if (!location.trim() && s.location) setLocation(s.location);
+          setAiFilled(["สิ่งที่ต้องแก้", "หมวดงาน"]);
+        }}
+      />
+      <AiFilledNote phone fields={aiFilled} />
       <div className="grid grid-cols-2 gap-2">
         <MBtn onClick={onDone}>ยกเลิก</MBtn>
         <MBtn primary type="submit" disabled={!title.trim()}>
@@ -150,6 +173,7 @@ function FixForm({ item, onDone }: { item: PunchItem; onDone: () => void }) {
   return (
     <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
       <MediaField value={photos} onChange={setPhotos} label="รูปหลังแก้" photosOnly />
+      <FixCheckAssist phone title={item.title} location={item.location} before={item.photos} after={photos} />
       <div className="grid grid-cols-2 gap-2">
         <MBtn onClick={onDone}>ยกเลิก</MBtn>
         <MBtn

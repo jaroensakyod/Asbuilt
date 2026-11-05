@@ -14,6 +14,8 @@ import { afterDiscount, docTypes, FULL_TAX_INVOICE, lineAmount, linesTotal, payS
 import { ACC_TODAY, expensesCol, isLockedDate, LOCKED_MSG, useAccess, useBooks } from "@/lib/accounting/store";
 import type { Expense } from "@/lib/accounting/types";
 import { Btn, CsvButton, Empty, I, Labeled, Modal, Num, numInput, PeriodSelect, Pill, tableCls, td, tdR, th, thR, Toolbar } from "./bits";
+import { AiBanner, AiField, AiPill, IssueList } from "@/components/ai-docs/bits";
+import { ReceiptAi, type ReceiptAiMeta } from "@/components/ai-docs/receipt-ai";
 
 const PAY_LABEL: Record<string, string> = { โอนแล้ว: "โอนแล้ว (1112)", เงินสดย่อย: "เงินสดย่อย (1113)", เงินสด: "เงินสด (1111)", ยังไม่จ่าย: "ยังไม่จ่าย (ตั้งเจ้าหนี้ 2111)" };
 
@@ -25,6 +27,7 @@ export function ExpensesView() {
   const [cat, setCat] = useState("");
   const [project, setProject] = useState("");
   const [form, setForm] = useState<Expense | "new" | null>(null);
+  const [ai, setAi] = useState<ReceiptAiMeta | null>(null);
 
   const shown = useMemo(
     () =>
@@ -87,6 +90,16 @@ export function ExpensesView() {
               }),
             ]}
           />
+          {edit && (
+            <ReceiptAi
+              categories={expenseCategoryGroups.flatMap((g) => g.items)}
+              projects={projects}
+              onDraft={(d, meta) => {
+                setAi(meta);
+                setForm({ id: "", amount: 0, payStatus: "เงินสดย่อย", status: "posted", ...d, docs: meta.refs } as Expense);
+              }}
+            />
+          )}
           {edit && (
             <Btn primary small onClick={() => setForm("new")}>
               <Plus {...I} />
@@ -182,7 +195,18 @@ export function ExpensesView() {
           <Empty>ไม่มีรายการในเงื่อนไขนี้</Empty>
         )}
       </Card>
-      {form && <ExpenseForm initial={form === "new" ? undefined : form} onClose={() => setForm(null)} locks={locks} projectName={projectName} />}
+      {form && (
+        <ExpenseForm
+          initial={form === "new" ? undefined : form}
+          ai={form !== "new" && !form.id ? (ai ?? undefined) : undefined}
+          onClose={() => {
+            setForm(null);
+            setAi(null);
+          }}
+          locks={locks}
+          projectName={projectName}
+        />
+      )}
     </>
   );
 }
@@ -192,7 +216,10 @@ let rowKey = 0;
 const stripKey = (r: Row): Line => ({ name: r.name, qty: r.qty, price: r.price, unit: r.unit, discount: r.discount, discountType: r.discountType });
 const blankRow = (): Row => ({ key: ++rowKey, name: "", qty: 1, price: 0, unit: "", discount: 0, discountType: "percent" });
 
-function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expense; onClose: () => void; locks: ReturnType<typeof useBooks>["locks"]; projectName: (id?: string) => string }) {
+function ExpenseForm({ initial, ai, onClose, locks, projectName }: { initial?: Expense; ai?: ReceiptAiMeta; onClose: () => void; locks: ReturnType<typeof useBooks>["locks"]; projectName: (id?: string) => string }) {
+  /** an AI draft arrives as initial without an id: it is still a new expense */
+  const editing = initial?.id ? initial : undefined;
+  const aiKey = (k: string) => !!ai?.keys.includes(k);
   const { accounts, projects } = useBooks();
   const [d, setD] = useState<Expense>(
     () =>
@@ -221,7 +248,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
   const postable = accounts.filter((a) => a.active && !a.header && (a.type === "expense" || a.code.startsWith("11") || a.code.startsWith("12")));
 
   const lockedNew = isLockedDate(d.date, locks);
-  const lockedOld = initial ? isLockedDate(initial.date, locks) : false;
+  const lockedOld = editing ? isLockedDate(editing.date, locks) : false;
   const err =
     lockedNew || lockedOld
       ? LOCKED_MSG
@@ -239,7 +266,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
 
   const save = () => {
     if (err) return;
-    const id = initial?.id || expensesCol.nextId(docPrefix("EX", d.date));
+    const id = editing?.id || expensesCol.nextId(docPrefix("EX", d.date));
     expensesCol.upsert({ ...draft, id, payee: d.payee.trim(), payeeTaxId: d.payeeTaxId?.replace(/\D/g, "") || undefined, costCode: cat?.site ? d.costCode : undefined, projectId: d.projectId || undefined });
     onClose();
   };
@@ -249,16 +276,16 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
       open
       onClose={onClose}
       width={1080}
-      title={initial ? `แก้ไขค่าใช้จ่าย ${initial.id}` : "บันทึกค่าใช้จ่าย"}
+      title={editing ? `แก้ไขค่าใช้จ่าย ${editing.id}` : ai ? "บันทึกค่าใช้จ่ายจากใบเสร็จ (AI)" : "บันทึกค่าใช้จ่าย"}
       footer={
         <>
           {err && <span className="mr-auto text-[13px] text-neg">{err}</span>}
-          {initial && initial.status !== "void" && !lockedOld && (
+          {editing && editing.status !== "void" && !lockedOld && (
             <Btn
               danger
               onClick={() => {
-                if (window.confirm(`ยกเลิกรายการ ${initial.id} เลขที่นี้จะไม่ถูกนำกลับมาใช้อีก`)) {
-                  expensesCol.upsert({ ...initial, status: "void" });
+                if (window.confirm(`ยกเลิกรายการ ${editing.id} เลขที่นี้จะไม่ถูกนำกลับมาใช้อีก`)) {
+                  expensesCol.upsert({ ...editing, status: "void" });
                   onClose();
                 }
               }}
@@ -274,23 +301,33 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
         </>
       }
     >
+      {ai && (
+        <AiBanner confidence={ai.confidence} refs={ai.refs} note={ai.note}>
+          <IssueList
+            issues={[
+              ...ai.issues,
+              ...(ai.total > 0 && Math.abs(j.calc.gross - ai.total) > 1 ? [{ field: "total", tone: "neg" as const, msg: `ยอดรวมที่คำนวณ ${fmt(j.calc.gross)} ไม่ตรงกับยอดในใบเสร็จ ${fmt(ai.total)} ตรวจ VAT/ส่วนลด` }] : []),
+            ]}
+          />
+        </AiBanner>
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <Labeled label="วันที่">
+            <AiField label="วันที่" ai={aiKey("date")}>
               <input type="date" className={inputCls} value={d.date} onChange={(e) => set("date", e.target.value)} />
-            </Labeled>
-            <Labeled label="ประเภทเอกสาร">
+            </AiField>
+            <AiField label="ประเภทเอกสาร" ai={aiKey("docType")}>
               <select className={inputCls} value={d.docType} onChange={(e) => set("docType", e.target.value)}>
                 {docTypes.map((t) => (
                   <option key={t}>{t}</option>
                 ))}
               </select>
-            </Labeled>
-            <Labeled label="เลขที่เอกสาร">
+            </AiField>
+            <AiField label="เลขที่เอกสาร" ai={aiKey("docNo")}>
               <input className={inputCls} value={d.docNo ?? ""} onChange={(e) => set("docNo", e.target.value)} />
-            </Labeled>
-            <Labeled label="หมวดค่าใช้จ่าย">
+            </AiField>
+            <AiField label="หมวดค่าใช้จ่าย" ai={aiKey("category")}>
               <select
                 className={inputCls}
                 value={d.category}
@@ -307,7 +344,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                   </optgroup>
                 ))}
               </select>
-            </Labeled>
+            </AiField>
             <Labeled label="บัญชี (ปรับได้)">
               <select className={inputCls} value={d.accountCode ?? ""} onChange={(e) => set("accountCode", e.target.value || undefined)}>
                 <option value="">ตามหมวด · {j.lines[0]?.account}</option>
@@ -327,7 +364,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                 ))}
               </select>
             </Labeled>
-            <Labeled label="โครงการ">
+            <AiField label="โครงการ" ai={aiKey("projectId")}>
               <select className={inputCls} value={d.projectId ?? ""} onChange={(e) => set("projectId", e.target.value || undefined)}>
                 <option value="">สำนักงาน (ไม่ระบุโครงการ)</option>
                 {projects.map((p) => (
@@ -336,7 +373,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                   </option>
                 ))}
               </select>
-            </Labeled>
+            </AiField>
             {cat?.site && (
               <Labeled label="หมวดต้นทุน (cost code)">
                 <select className={inputCls} value={d.costCode ?? ""} onChange={(e) => set("costCode", e.target.value || undefined)}>
@@ -352,22 +389,25 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
           </div>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <Labeled label="ผู้รับเงิน / ผู้ขาย" className="md:col-span-1">
+            <AiField label="ผู้รับเงิน / ผู้ขาย" ai={aiKey("payee")} className="md:col-span-1">
               <input className={inputCls} value={d.payee} onChange={(e) => set("payee", e.target.value)} />
-            </Labeled>
-            <Labeled label="เลขประจำตัวผู้เสียภาษี">
+            </AiField>
+            <AiField label="เลขประจำตัวผู้เสียภาษี" ai={aiKey("payeeTaxId")}>
               <input className={cx(inputCls, "font-mono")} value={d.payeeTaxId ?? ""} onChange={(e) => set("payeeTaxId", e.target.value)} placeholder="13 หลัก" />
-            </Labeled>
-            <Labeled label="สาขา">
+            </AiField>
+            <AiField label="สาขา" ai={aiKey("payeeBranch")}>
               <input className={inputCls} value={d.payeeBranch ?? ""} onChange={(e) => set("payeeBranch", e.target.value)} placeholder="สำนักงานใหญ่" />
-            </Labeled>
+            </AiField>
           </div>
 
           <div className="overflow-x-auto rounded-[10px] border border-line">
             <table className={tableCls}>
               <thead>
                 <tr className="bg-raised/60">
-                  <th className={th}>รายการ</th>
+                  <th className={th}>
+                    รายการ
+                    <AiPill show={aiKey("lines")} />
+                  </th>
                   <th className={thR}>จำนวน</th>
                   <th className={th}>หน่วย</th>
                   <th className={thR}>ราคา/หน่วย</th>
@@ -430,7 +470,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                 </select>
               </div>
             </Labeled>
-            <Labeled label="ภาษีมูลค่าเพิ่ม">
+            <AiField label="ภาษีมูลค่าเพิ่ม" ai={aiKey("vatMode")}>
               <select className={inputCls} value={d.vatMode} onChange={(e) => set("vatMode", e.target.value as VatMode)}>
                 {Object.entries(vatModes).map(([k, v]) => (
                   <option key={k} value={k}>
@@ -438,8 +478,8 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                   </option>
                 ))}
               </select>
-            </Labeled>
-            <Labeled label="หัก ณ ที่จ่าย">
+            </AiField>
+            <AiField label="หัก ณ ที่จ่าย" ai={aiKey("whtRate")}>
               <select className={inputCls} value={d.whtRate} onChange={(e) => set("whtRate", Number(e.target.value))}>
                 {whtRates.map((r) => (
                   <option key={r} value={r}>
@@ -447,7 +487,7 @@ function ExpenseForm({ initial, onClose, locks, projectName }: { initial?: Expen
                   </option>
                 ))}
               </select>
-            </Labeled>
+            </AiField>
             {d.payStatus === "ยังไม่จ่าย" && (
               <Labeled label="วันที่จ่ายจริง (ถ้าจ่ายแล้ว)">
                 <input type="date" className={inputCls} value={d.paidDate ?? ""} onChange={(e) => setD((x) => ({ ...x, paidDate: e.target.value || undefined, paidAccount: e.target.value ? A.bank : undefined }))} />

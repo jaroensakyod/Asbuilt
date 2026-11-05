@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, Info, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, CloudDownload, Download, Info, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { Card, CardHead, cx, Field, inputCls, PageHeader } from "@/components/ui";
 import { Btn, Empty, IconBtn, Modal, Pill, Segmented, StatCard, useHydrated } from "@/components/ops/bits";
 import { COST_CODES, type CostCode } from "@/lib/biz";
@@ -21,6 +21,7 @@ import {
   priceObs,
   seriesOf,
   SOURCE_LABEL,
+  SOURCE_SHORT,
   thMonth,
   toCsv,
   type CompetitorPrice,
@@ -28,10 +29,15 @@ import {
   type PriceItem,
   type PriceSource,
 } from "@/lib/sales/prices";
+import { canEdit } from "@/lib/permissions";
+import { useMe } from "@/lib/use-me";
+import { latestLabourOf } from "@/lib/sales/prices";
 import { Change, I, n0, price, SampleTag, Td, Th, theadCls } from "./common";
 import { PriceChart } from "./price-chart";
+import { AlertExplain, FileImportModal, MappingPanel, SyncLog, SyncModal, useFeedStatus } from "./price-feeds";
+import { AiButton } from "./price-ai-bits";
 
-type Tab = "items" | "alerts" | "competitors" | "sources";
+type Tab = "items" | "alerts" | "feeds" | "competitors" | "sources";
 
 export function PricesView() {
   const hydrated = useHydrated();
@@ -46,6 +52,11 @@ export function PricesView() {
   const [cat, setCat] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [reading, setReading] = useState(false);
+  const me = useMe();
+  const editable = canEdit(me.role, "costs");
+  const feed = useFeedStatus();
 
   const rows = useMemo(
     () =>
@@ -54,7 +65,8 @@ export function PricesView() {
         const moves = PRICE_SOURCES.map((s) => latest[s]?.change).filter((v): v is number => v !== undefined);
         const maxMove = moves.length ? moves.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a)) : 0;
         const imported = PRICE_SOURCES.some((s) => latest[s] && !latest[s]!.sample);
-        return { it, latest, maxMove, imported };
+        const realSources = PRICE_SOURCES.filter((s) => latest[s] && !latest[s]!.sample);
+        return { it, latest, maxMove, imported, realSources };
       }),
     [items, obs],
   );
@@ -96,10 +108,21 @@ export function PricesView() {
               <Download {...I} />
               ส่งออก CSV
             </Btn>
-            <Btn primary onClick={() => setImporting(true)}>
+            <Btn onClick={() => setImporting(true)}>
               <Upload {...I} />
-              นำเข้าราคา
+              นำเข้า CSV
             </Btn>
+            {editable && (
+              <>
+                <AiButton small={false} onClick={() => setReading(true)}>
+                  อ่านไฟล์ราคา (AI)
+                </AiButton>
+                <Btn primary onClick={() => setSyncing(true)}>
+                  <CloudDownload {...I} />
+                  ดึงราคาจาก พณ.
+                </Btn>
+              </>
+            )}
           </>
         }
       />
@@ -107,7 +130,21 @@ export function PricesView() {
       <div className="mb-4 flex gap-3 rounded-[12px] border border-dashed border-line-strong bg-card px-4 py-3 text-[13px] text-ink-2">
         <Info {...I} className="mt-0.5 shrink-0 text-ink-3" />
         <p>
-          ราคาในตารางนี้เป็น <span className="text-ink">ราคาตัวอย่าง</span> ที่ระบบสร้างขึ้นเพื่อสาธิต ไม่ใช่ราคาทางการ จนกว่าจะนำเข้าข้อมูลจริงผ่าน CSV รายการที่นำเข้าแล้วจะแทนที่ราคาตัวอย่างของแหล่งนั้นทันที ดูที่มาของแต่ละแหล่งได้ที่แท็บ
+          {hydrated && importedItems ? (
+            <>
+              มีราคาจริงแล้ว <span className="num font-mono text-ink">{importedItems}</span> จาก {items.length} รายการ
+              {feed.last ? ` · ดึง/นำเข้าล่าสุด ${new Date(feed.last.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}` : ""} · รายการและแหล่งที่ยังไม่มีราคาจริงยังแสดง <span className="text-ink">ราคาตัวอย่าง</span> ซึ่งไม่ใช่ราคาทางการ
+            </>
+          ) : (
+            <>
+              ราคาในตารางนี้เป็น <span className="text-ink">ราคาตัวอย่าง</span> ที่ระบบสร้างขึ้นเพื่อสาธิต ไม่ใช่ราคาทางการ จนกว่าจะดึงราคาจริงจากกระทรวงพาณิชย์ อ่านไฟล์ราคาทางการ หรือนำเข้า CSV
+            </>
+          )}{" "}
+          ราคาจริงของแหล่งใดจะแทนที่ราคาตัวอย่างของแหล่งนั้นทันที เชื่อมรายการกับรหัสสินค้า พณ. ได้ที่แท็บ
+          <button type="button" className="mx-1 text-accent-text hover:underline" onClick={() => setTab("feeds")}>
+            เชื่อมรหัส พณ.
+          </button>
+          ดูที่มาของแต่ละแหล่งได้ที่แท็บ
           <button type="button" className="mx-1 text-accent-text hover:underline" onClick={() => setTab("sources")}>
             แหล่งข้อมูล
           </button>
@@ -117,7 +154,14 @@ export function PricesView() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="รายการในฐานข้อมูล" value={items.length} unit="รายการ" note={`${cats.length} หมวดวัสดุ · ${Object.keys(COST_CODES).length} หมวดต้นทุน`} />
         <StatCard label={`ราคาเปลี่ยนเกิน ${threshold}%`} value={alerts.length} unit="รายการ" note="เทียบเดือนก่อน ทุกแหล่ง" onClick={() => setTab("alerts")} active={tab === "alerts"} tone={alerts.length ? "neg" : undefined} />
-        <StatCard label="นำเข้าข้อมูลจริงแล้ว" value={hydrated ? importedItems : 0} unit={`จาก ${items.length}`} note={hydrated && obs.length ? `${n0(obs.length)} ราคาที่นำเข้า` : "ยังใช้ราคาตัวอย่างทั้งหมด"} />
+        <StatCard
+          label="มีราคาจริงแล้ว"
+          value={hydrated ? importedItems : 0}
+          unit={`จาก ${items.length}`}
+          note={hydrated && obs.length ? `${n0(obs.length)} ราคา · เชื่อมรหัส พณ. ${feed.mapped} รายการ` : "ยังใช้ราคาตัวอย่างทั้งหมด"}
+          onClick={() => setTab("feeds")}
+          active={tab === "feeds"}
+        />
         <StatCard
           label="ราคาบ้านคู่แข่ง (มัธยฐาน)"
           value={compAll ? n0(compAll.median) : "–"}
@@ -135,6 +179,7 @@ export function PricesView() {
           options={[
             { key: "items", label: "ราคาวัสดุ/ค่าแรง" },
             { key: "alerts", label: `แจ้งเตือน (${alerts.length})` },
+            { key: "feeds", label: "เชื่อมรหัส พณ." },
             { key: "competitors", label: "ราคาบ้านคู่แข่ง" },
             { key: "sources", label: "แหล่งข้อมูล" },
           ]}
@@ -205,7 +250,7 @@ export function PricesView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {list.map(({ it, latest, imported }) => (
+                {list.map(({ it, latest, imported, realSources }) => (
                   <tr key={it.code} onClick={() => setOpen(it.code)} className="cursor-pointer transition-colors duration-150 hover:bg-raised/60">
                     <Td mono className="whitespace-nowrap text-ink-2">
                       {it.code}
@@ -214,7 +259,7 @@ export function PricesView() {
                       <span className="text-ink">{it.name}</span>
                       <span className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-3">
                         {it.category}
-                        {imported ? <Pill tone="pos">มีราคานำเข้า</Pill> : <SampleTag />}
+                        {imported ? <Pill tone="pos">ราคาจริง {realSources.map((s) => SOURCE_SHORT[s]).join(" ")}</Pill> : <SampleTag />}
                       </span>
                     </Td>
                     <Td className="whitespace-nowrap text-ink-2">{it.unit}</Td>
@@ -271,6 +316,7 @@ export function PricesView() {
               </label>
             }
           />
+          {alerts.length > 0 && <AlertExplain alerts={alerts.map(({ r, s, l }) => ({ it: r.it, s, l }))} threshold={threshold} />}
           {alerts.length ? (
             <ul className="divide-y divide-line">
               {alerts.map(({ r, s, l }) => (
@@ -300,11 +346,14 @@ export function PricesView() {
         </Card>
       )}
 
+      {tab === "feeds" && <MappingPanel items={items} />}
       {tab === "competitors" && <Competitors list={comps} ourMedian={ourMedian} />}
       {tab === "sources" && <Sources />}
 
       {openItem && <ItemDetail item={openItem} onClose={() => setOpen(null)} threshold={threshold} />}
       {importing && <ImportModal items={items} onClose={() => setImporting(false)} />}
+      {syncing && <SyncModal onClose={() => setSyncing(false)} />}
+      {reading && <FileImportModal items={items} onClose={() => setReading(false)} />}
     </>
   );
 }
@@ -314,6 +363,8 @@ function ItemDetail({ item, onClose, threshold }: { item: PriceItem; onClose: ()
   const series = Object.fromEntries(PRICE_SOURCES.map((s) => [s, seriesOf(item, s, obs)]).filter(([, v]) => (v as unknown[]).length)) as Partial<Record<PriceSource, ReturnType<typeof seriesOf>>>;
   const recent = (Object.keys(series) as PriceSource[]).flatMap((s) => series[s]!.slice(-6).map((p) => ({ ...p, s }))).sort((a, b) => b.date.localeCompare(a.date) || a.s.localeCompare(b.s));
   const hasSample = recent.some((p) => p.sample);
+  const labour = latestLabourOf(item, obs);
+  const realRows = obs.filter((o) => o.itemCode === item.code).sort((a, b) => b.date.localeCompare(a.date));
   return (
     <Modal open onClose={onClose} title={item.name} width={820}>
       <div className="flex flex-wrap items-center gap-2 pb-3 text-[13px] text-ink-2">
@@ -325,11 +376,16 @@ function ItemDetail({ item, onClose, threshold }: { item: PriceItem; onClose: ()
         <span>
           หมวดต้นทุน <span className="font-mono">{item.costCode}</span> {COST_CODES[item.costCode]}
         </span>
-        {item.labour > 0 && (
+        {(labour || item.labour > 0) && (
           <>
             <span className="text-ink-3">·</span>
             <span>
-              ค่าแรง <span className="num font-mono text-ink">{price(item.labour)}</span> บ./{item.unit}
+              ค่าแรง <span className="num font-mono text-ink">{price(labour?.price ?? item.labour)}</span> บ./{item.unit}
+              {labour && (
+                <span className="ml-1 text-ink-3">
+                  ({SOURCE_SHORT[labour.source]} {thMonth(labour.date)})
+                </span>
+              )}
             </span>
           </>
         )}
@@ -380,12 +436,20 @@ function ItemDetail({ item, onClose, threshold }: { item: PriceItem; onClose: ()
                 <Td right mono>
                   {price(p.price)}
                 </Td>
-                <Td>{p.sample ? <SampleTag /> : <Pill tone="pos">นำเข้า</Pill>}</Td>
+                <Td>{p.sample ? <SampleTag /> : <Pill tone="pos">ราคาจริง</Pill>}</Td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {realRows.length > 0 && (
+        <p className="mt-3 text-[12px] text-ink-3">
+          ราคาจริง {realRows.length} ค่า · ล่าสุดจาก{" "}
+          {realRows[0].via === "api" || realRows[0].via === "cron" ? `API กระทรวงพาณิชย์ รหัส ${realRows[0].ref ?? ""}` : realRows[0].via === "file" ? `ไฟล์ ${realRows[0].ref ?? ""}` : "CSV"}
+          {realRows[0].rawPrice !== undefined && realRows[0].rawUnit ? ` (ต้นฉบับ ${price(realRows[0].rawPrice)} บ./${realRows[0].rawUnit})` : ""}
+          {realRows.some((o) => o.kind === "labour") ? ` · มีค่าแรงนำเข้า ${realRows.filter((o) => o.kind === "labour").length} ค่า` : ""}
+        </p>
+      )}
     </Modal>
   );
 }
@@ -711,10 +775,11 @@ function Sources() {
       <Card className="px-5 py-4 lg:col-span-3">
         <p className="text-[15px] font-medium">การดึงข้อมูลอัตโนมัติ</p>
         <p className="mt-2 max-w-[60rem] text-[13px] leading-[21px] text-ink-2">
-          ขั้นถัดไปของโมดูลนี้คือดึงราคาจากกระทรวงพาณิชย์และกรมบัญชีกลางตามรอบที่ประกาศโดยอัตโนมัติ ตอนนี้ยังต้องนำเข้าด้วยไฟล์ CSV เอง ราคาที่ไม่ได้นำเข้าจะแสดงป้าย <SampleTag className="mx-1 align-middle" /> และเป็นตัวเลขสาธิตเท่านั้น
-          ห้ามใช้อ้างอิงเป็นราคาทางการ
+          กระทรวงพาณิชย์มี API ข้อมูลเปิด (dataapi.moc.go.th) ให้ราคาวัสดุรายสินค้า รายจังหวัด รายเดือน เชื่อมรายการของเรากับรหัสสินค้าในแท็บ “เชื่อมรหัส พณ.” แล้วกด “ดึงราคาจาก พณ.” ระบบของ พณ. ตอบช้าและบางครั้งขัดข้อง ถ้าดึงไม่ได้ให้ดาวน์โหลดไฟล์ PDF ราคาวัสดุรายจังหวัดหรือราคาเฉลี่ยสำหรับราคากลางจากเว็บไซต์ สนค. (www.tpso.go.th) แล้วใช้
+          “อ่านไฟล์ราคา (AI)” กรมบัญชีกลางไม่มี API ให้ดาวน์โหลดบัญชีค่าแรงงาน/ราคากลางจาก gprocurement.go.th แล้วอ่านด้วย AI เช่นกัน ราคาที่ไม่ได้นำเข้าจะแสดงป้าย <SampleTag className="mx-1 align-middle" /> และเป็นตัวเลขสาธิตเท่านั้น ห้ามใช้อ้างอิงเป็นราคาทางการ
         </p>
       </Card>
+      <SyncLog />
     </div>
   );
 }

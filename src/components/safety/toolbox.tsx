@@ -18,6 +18,7 @@ import { timeOfDay } from "@/lib/safety/now";
 import { toolboxTalks } from "@/lib/safety/store";
 import { talkHeadcount, TOPIC_CAT_LABEL, TOPICS, type Attendee, type TopicCat, type ToolboxTalk } from "@/lib/safety/types";
 import { n0, siteName, SiteSelect, useSafetyAccess } from "./bits";
+import { TopicAssist } from "@/components/ai-field/hazard-assist";
 
 export function ToolboxTab({ q }: { q?: string }) {
   const talks = toolboxTalks.use();
@@ -281,6 +282,19 @@ function TalkForm({ onClose }: { onClose: () => void }) {
         <Field label="เวลา">
           <input type="time" className={inputCls} value={time} onChange={(e) => setTime(e.target.value)} />
         </Field>
+        <div className="sm:col-span-4">
+          <TopicAssist
+            site={projectId}
+            onPick={(t) => {
+              if (t.topicId) setTopicId(t.topicId);
+              else {
+                setTopicId("custom");
+                setCustom(t.title);
+              }
+              if (t.points.length) setNotes(t.points.join(" · "));
+            }}
+          />
+        </div>
         <div className="sm:col-span-3">
           <Field label="หัวข้อจากคลังหัวข้อ">
             <select className={inputCls} value={topicId} onChange={(e) => setTopicId(e.target.value)}>

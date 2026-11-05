@@ -14,6 +14,8 @@ import { computeBoq, DEFAULT_MARGIN, DEFAULT_OVERHEAD, finish, type BoqLine } fr
 import { createQuote, estimateFromBoq, estimates, leads } from "@/lib/sales/crm";
 import { BOOK_LABEL, competitorPerM2, competitorPrices, SOURCE_SHORT, usePriceBook, type BookChoice } from "@/lib/sales/prices";
 import { I, mb, n0, pct, price, qty, SampleTag, Td, Th, theadCls } from "./common";
+import { AiButton } from "@/components/ai-sales/bits";
+import { EstimateAssistant } from "@/components/ai-sales/estimate-assistant";
 
 const CHOICES: BookChoice[] = ["cgd", "moc", "supplier", "lowest"];
 
@@ -38,6 +40,7 @@ export function EstimatingView() {
   const [mg, setMg] = useState(Number(sp.get("margin")) || DEFAULT_MARGIN);
   const [grade, setGrade] = useState<number | null>(Number(sp.get("grade")) || null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const project = allProjects.find((p) => p.id === projectId);
   const lead = leadList.find((l) => l.id === leadId);
@@ -79,6 +82,9 @@ export function EstimatingView() {
           sub="ถอดปริมาณงานจากโมเดลบ้าน 3 มิติ คิดราคาวัสดุและค่าแรงจากฐานข้อมูลราคา แล้วบวกค่าดำเนินการและกำไรเป็นราคาขาย"
           actions={
             <>
+              <AiButton small={false} onClick={() => setAiOpen(true)} disabled={aiOpen}>
+                ประเมินงานต่อเติมด้วย AI
+              </AiButton>
               <Btn onClick={() => window.print()}>
                 <Printer {...I} />
                 พิมพ์ BOQ
@@ -225,6 +231,8 @@ export function EstimatingView() {
             เกรดวัสดุตกแต่งตั้งต้นจากระดับราคาแค็ตตาล็อกของแบบ (มาตรฐาน 1.00 ≈ {n0(24000)} บ./ตร.ม.) ใช้กับหมวด 08–12 เต็มอัตรา และหมวดโครงสร้าง/ระบบครึ่งหนึ่ง{province ? ` · ราคากระทรวงพาณิชย์เลือกจังหวัด${province}ก่อนถ้ามี` : ""}
           </p>
         </Card>
+
+        {aiOpen && <EstimateAssistant choice={choice} province={province} overheadPct={oh} marginPct={mg} onClose={() => setAiOpen(false)} />}
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_360px]">
           <Card>

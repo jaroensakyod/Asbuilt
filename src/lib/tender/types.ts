@@ -118,6 +118,10 @@ export type TenderSettings = {
   perfBondPct: number;
   /** monthly indices by symbol, e.g. { "2026-04": { I: 109.2, C: 116.1, … } } */
   indices: Record<string, Record<string, number>>;
+  /** K symbol → MOC CMI index_id used by "ดึงดัชนีจาก พณ." (e.g. C → ซีเมนต์, S → เหล็ก) */
+  kIndexMap?: Record<string, string>;
+  /** where official index values came from (latest first) */
+  indexLog?: { at: string; via: "moc-api" | "file"; file?: string; cells: number; months: string[]; by: string }[];
 };
 
 export const INDEX_LABEL: Record<string, string> = {

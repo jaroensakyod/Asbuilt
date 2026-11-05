@@ -27,6 +27,7 @@ import {
 } from "@/lib/procurement";
 import { Amt, BILL_LABEL, BILL_TONE, DocLink, POStatusPill, PRStatusPill, td, th, useProcPerms, useProjects } from "./bits";
 import { ClaimForm, PRForm } from "./forms";
+import { BillFromDocButton } from "@/components/ai-docs/bill-from-doc";
 
 type Tab = "pr" | "po" | "gr" | "bill";
 const TABS: { key: Tab; label: string }[] = [
@@ -146,7 +147,8 @@ function Inner({ initTab, initProject, openNew }: { initTab: Tab; initProject: s
           <h1 className="text-[30px] font-normal leading-[1.15]">จัดซื้อ</h1>
           <p className="mt-2 max-w-[48rem] text-ink-2">ใบขอซื้อจากหน้างาน เปรียบเทียบราคา ใบสั่งซื้อพร้อมอนุมัติตามวงเงิน รับสินค้าที่ไซต์ และใบแจ้งหนี้ที่ส่งต่อให้บัญชี</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {perms.edit && <BillFromDocButton />}
           {perms.edit && (
             <Btn onClick={() => setClaimOpen(true)}>
               <FilePlus2 {...I} />

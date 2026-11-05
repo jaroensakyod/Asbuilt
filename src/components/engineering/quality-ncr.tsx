@@ -23,6 +23,7 @@ import {
   type NcrStatus,
 } from "@/lib/engineering";
 import { Area, DocHeader, DocRow, DocSection, Due, PeopleList, pname, ProjectSelect, rowCls, Signatures, td, th, useEngPerms } from "./bits";
+import { NcrAssist } from "@/components/ai-field/eng-assist";
 import { matchQ, QFilters, useNewTrigger, type QFilter, type SetQ } from "./quality-bits";
 
 export const NCR_TONE: Record<NcrStatus, Tone> = { open: "neg", action: "warn", verify: "accent", closed: "pos" };
@@ -163,6 +164,25 @@ export function NcrForm({ init, defaultProject, onClose, onSaved, preset }: { in
       }
     >
       <PeopleList />
+      <div className="mb-4">
+        <NcrAssist
+          projectId={d.projectId}
+          photos={d.photos}
+          onApply={(a) =>
+            setD((x) => ({
+              ...x,
+              title: a.title || x.title,
+              description: a.description || x.description,
+              location: a.location || x.location,
+              disc: a.disc,
+              severity: a.severity,
+              rootCause: a.rootCause || x.rootCause,
+              corrective: a.corrective || x.corrective,
+              preventive: a.preventive || x.preventive,
+            }))
+          }
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {!init && (
           <Field label="โครงการ">

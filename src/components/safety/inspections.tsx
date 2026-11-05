@@ -14,6 +14,9 @@ import { safetyInspections } from "@/lib/safety/store";
 import { INSP_ITEMS, INSP_LABEL, INSP_SHORT, TAG_LABEL, type InspKind, type ItemResult, type SafetyInspection, type ScaffoldTag } from "@/lib/safety/types";
 import type { MediaRef } from "@/lib/media";
 import { n0, ResultToggle, ScorePill, siteName, SiteSelect, useSafetyAccess } from "./bits";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { HazardAssist } from "@/components/ai-field/hazard-assist";
+import { applyHazards, followUpDays } from "@/lib/ai-field/safety";
 
 const TAG_TONE: Record<ScaffoldTag, Tone> = { green: "pos", yellow: "warn", red: "neg" };
 const TAG_SHORT: Record<ScaffoldTag, string> = { green: "เขียว", yellow: "เหลือง", red: "แดง" };
@@ -234,6 +237,7 @@ function InspectionForm({ kind, defaultSite, onClose, onCreated }: { kind: InspK
   const [actions, setActions] = useState("");
   const [due, setDue] = useState(addDays(TODAY, 3));
   const [photos, setPhotos] = useState<MediaRef[]>([]);
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
   const score = inspectionScore(items);
   const fails = items.filter((i) => i.result === "fail").length;
   const autoTag: ScaffoldTag = fails === 0 ? "green" : fails <= 2 ? "yellow" : "red";
@@ -339,6 +343,21 @@ function InspectionForm({ kind, defaultSite, onClose, onCreated }: { kind: InspK
       )}
       <div className="mt-3">
         <MediaField value={photos} onChange={setPhotos} label="รูปถ่ายการตรวจ" photosOnly />
+      </div>
+      <div className="mt-3 flex flex-col gap-2">
+        <HazardAssist
+          photos={photos}
+          checklist={INSP_ITEMS[kind]}
+          location={location}
+          onApply={(h) => {
+            const r = applyHazards(items, h);
+            setItems(r.items);
+            setActions((a) => (a.trim() ? `${a.trim()}\n${r.actions}` : r.actions));
+            setDue(addDays(date, followUpDays(h)));
+            setAiFilled(["ข้อที่ไม่ผ่าน", "สิ่งที่พบ", "การแก้ไขที่สั่ง", "กำหนดแก้ไข"]);
+          }}
+        />
+        <AiFilledNote fields={aiFilled} />
       </div>
     </Modal>
   );

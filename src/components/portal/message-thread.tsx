@@ -42,8 +42,25 @@ export function Thread({ messages, viewer, empty = "ยังไม่มีข�
   );
 }
 
-export function Composer({ onSend, placeholder = "พิมพ์ข้อความ", allowFiles = true, busy }: { onSend: (text: string, files: MediaRef[]) => void | Promise<void>; placeholder?: string; allowFiles?: boolean; busy?: boolean }) {
-  const [text, setText] = useState("");
+export function Composer({
+  onSend,
+  placeholder = "พิมพ์ข้อความ",
+  allowFiles = true,
+  busy,
+  value,
+  onValueChange,
+}: {
+  onSend: (text: string, files: MediaRef[]) => void | Promise<void>;
+  placeholder?: string;
+  allowFiles?: boolean;
+  busy?: boolean;
+  /** optional controlled text (e.g. an AI draft placed in the box for staff to edit) */
+  value?: string;
+  onValueChange?: (v: string) => void;
+}) {
+  const [own, setOwn] = useState("");
+  const text = value ?? own;
+  const setText = (v: string) => (onValueChange ? onValueChange(v) : setOwn(v));
   const [files, setFiles] = useState<MediaRef[]>([]);
   const [showFiles, setShowFiles] = useState(false);
   const send = async () => {

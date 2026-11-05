@@ -47,7 +47,25 @@ export type PriceObs = {
   province?: string;
   sample?: boolean;
   importedAt?: string;
+  /** material price (default) or a labour rate per item unit (ค่าแรง, e.g. from the กรมบัญชีกลาง booklet) */
+  kind?: PriceKind;
+  /** where a real observation came from: MOC API sync, AI/CSV file import, manual */
+  via?: "api" | "file" | "csv" | "cron";
+  /** source reference, e.g. the MOC com_code or the imported file name */
+  ref?: string;
+  /** price in the source unit before the unit factor (MOC unit may differ, e.g. ตัน → กก.) */
+  rawPrice?: number;
+  rawUnit?: string;
 };
+export type PriceKind = "material" | "labour";
+
+/** MOC uses กรุงเทพมหานคร; the rest of the app uses กรุงเทพฯ */
+export function normProvince(p?: string): string | undefined {
+  const t = p?.trim().replace(/^(จังหวัด|จ\.)\s*/, "");
+  if (!t) return undefined;
+  if (/^(กรุงเทพ(มหานคร|ฯ)?|กทม\.?|bangkok)$/i.test(t)) return "กรุงเทพฯ";
+  return t;
+}
 
 export type CompetitorPrice = {
   id: string;
@@ -222,19 +240,49 @@ export type PricePoint = { price: number; date: string; source: PriceSource; sam
  * Returns one point per month (latest observation in that month), ascending.
  */
 export function seriesOf(item: PriceItem, source: PriceSource, imported: PriceObs[], province?: string): PricePoint[] {
-  let rows = imported.filter((o) => o.itemCode === item.code && o.source === source);
+  // real observations of this item + source replace the whole sample series
+  let rows = imported.filter((o) => o.itemCode === item.code && o.source === source && (o.kind ?? "material") === "material");
   let sample = false;
   if (!rows.length) {
     rows = sampleHistory(item).filter((o) => o.source === source);
     sample = true;
   }
-  if (province && source === "moc") {
-    const inProv = rows.filter((o) => !o.province || o.province === province);
-    if (inProv.length) rows = inProv;
-  }
+  rows = oneProvince(rows, province);
   const byMonth = new Map<string, PriceObs>();
   for (const o of [...rows].sort((a, b) => a.date.localeCompare(b.date))) byMonth.set(o.date.slice(0, 7), o);
   return [...byMonth.values()].map((o) => ({ price: o.price, date: o.date.slice(0, 7) + "-01", source, sample: sample || !!o.sample, province: o.province }));
+}
+
+/**
+ * Keep one province so a series never mixes provinces: the requested one when it has data,
+ * otherwise กรุงเทพฯ, otherwise the province with the most observations. Rows without a
+ * province (national tables) are kept.
+ */
+function oneProvince(rows: PriceObs[], province?: string): PriceObs[] {
+  const provs = new Map<string, number>();
+  for (const o of rows) {
+    const p = normProvince(o.province);
+    if (p) provs.set(p, (provs.get(p) ?? 0) + 1);
+  }
+  if (provs.size === 0) return rows;
+  const want = normProvince(province);
+  let pick: string | undefined;
+  if (want && provs.has(want)) pick = want;
+  else if (provs.size === 1) return rows;
+  else if (provs.has("กรุงเทพฯ")) pick = "กรุงเทพฯ";
+  else pick = [...provs.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  return rows.filter((o) => !o.province || normProvince(o.province) === pick);
+}
+
+/** Latest imported labour rate for an item (any source, the most recent month wins), else undefined */
+export function latestLabourOf(item: Pick<PriceItem, "code">, imported: PriceObs[], province?: string): { price: number; date: string; source: PriceSource } | undefined {
+  const rows = oneProvince(
+    imported.filter((o) => o.itemCode === item.code && o.kind === "labour"),
+    province,
+  );
+  if (!rows.length) return undefined;
+  const last = [...rows].sort((a, b) => a.date.localeCompare(b.date) || (a.source === "cgd" ? 1 : -1))[rows.length - 1];
+  return { price: last.price, date: last.date.slice(0, 7) + "-01", source: last.source };
 }
 
 export type Latest = { price: number; prev?: number; change?: number; date: string; sample: boolean } | null;
@@ -264,7 +312,11 @@ export function makePriceBook(items: PriceItem[], imported: PriceObs[], choice: 
   return {
     choice,
     item: (code) => byCode.get(code),
-    labour: (code) => byCode.get(code)?.labour ?? 0,
+    labour: (code) => {
+      const it = byCode.get(code);
+      if (!it) return 0;
+      return latestLabourOf(it, imported, province)?.price ?? it.labour;
+    },
     material: (code) => {
       if (cache.has(code)) return cache.get(code)!;
       const it = byCode.get(code);

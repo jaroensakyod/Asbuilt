@@ -27,6 +27,7 @@ import {
 } from "@/lib/engineering";
 import { Area, CheckNote, DocHeader, DocRow, DocSection, Heading, PeopleList, pname, ProjectSelect, rowCls, SearchBox, SigImg, Tabs, td, th, thDT, useActiveProjects, useEngPerms } from "./bits";
 import { LicensesTab, RulesTab } from "./supervision-licenses";
+import { SupervisionAssist } from "@/components/ai-field/eng-assist";
 
 type STab = "reports" | "changes" | "licenses" | "rules";
 const KIND_LABEL = { daily: "รายวัน", weekly: "รายสัปดาห์" } as const;
@@ -304,6 +305,15 @@ function ReportForm({ init, defaultProject, onClose, onSaved }: { init?: Supervi
         <Field label="ความคืบหน้าโดยรวม (%)">
           <input type="number" inputMode="decimal" value={d.progress ?? ""} onChange={(e) => set("progress", e.target.value === "" ? undefined : Number(e.target.value))} className={cx(inputCls, "font-mono")} placeholder={String(getProject(d.projectId)?.actual ?? "")} />
         </Field>
+        <div className="sm:col-span-2">
+          <SupervisionAssist
+            projectId={d.projectId}
+            from={d.from}
+            to={d.to}
+            engineer={d.engineer}
+            onApply={(a, ids) => setD((x) => ({ ...x, work: a.work || x.work, tests: a.tests || x.tests, instructions: a.instructions || x.instructions, issues: a.issues || x.issues, diaryIds: [...new Set([...x.diaryIds, ...ids])] }))}
+          />
+        </div>
         <div className="sm:col-span-2">
           <Field label="งานที่ตรวจ">
             <Area value={d.work} onChange={(v) => set("work", v)} placeholder="งานที่เข้าตรวจในช่วงนี้ ตำแหน่ง ผลการตรวจ" />

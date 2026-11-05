@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LIVE } from "@/lib/supabase/env";
 import { ServiceWorker } from "./pwa";
+import { AiChatLauncher } from "@/components/ai";
 import { supabase } from "@/lib/supabase/client";
 import { bootWorkspace, onRemoteError, useWorkspace } from "@/lib/workspace";
 import { applyCompanySettings } from "@/app/team/team-store";
@@ -91,6 +92,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
         <ServiceWorker />
         {denied ? <p className="px-6 py-16 text-center text-[14px] text-ink-2">บทบาท {me.roleLabel} ใช้หน้านี้ไม่ได้</p> : children}
         <RemoteErrors />
+        <AiChatLauncher />
       </>
     );
 
@@ -113,6 +115,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
         </div>
       </div>
       <CommandPalette />
+      <AiChatLauncher />
       <RemoteErrors />
     </>
   );

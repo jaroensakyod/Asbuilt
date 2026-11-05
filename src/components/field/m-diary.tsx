@@ -14,6 +14,9 @@ import { DIARY_STATUS_LABEL, type Diary } from "@/lib/field/types";
 import { useMe } from "@/lib/use-me";
 import { MBtn, mArea, mInput, MLabel, MShell, Stepper, WEATHERS, WeatherIcon } from "./bits";
 import { SitePicker, useSite } from "./m-hub";
+import { AiPill } from "@/components/ai-field/ai-bits";
+import { DiaryAssist } from "@/components/ai-field/diary-assist";
+import type { DiaryFields } from "@/lib/ai-field/diary";
 
 export function MDiary() {
   const site = useSite();
@@ -48,9 +51,12 @@ export function MDiary() {
 function Form({ initial }: { initial: Diary }) {
   const [d, setD] = useState<Diary>(initial);
   const [saved, setSaved] = useState<"" | "draft" | "sent">("");
+  const [aiFilled, setAiFilled] = useState<DiaryFields[]>([]);
+  const ai = (k: DiaryFields) => aiFilled.includes(k);
   const subs = subcontractors.use();
   const allTasks = wbsTasks.use();
-  const tasks = useMemo(() => allTasks.filter((t) => t.projectId === d.projectId && !t.milestone && t.pct < 100 && !allTasks.some((c) => c.parentId === t.id)), [allTasks, d.projectId]);
+  const linked = d.work.map((w) => w.taskId).join("|");
+  const tasks = useMemo(() => allTasks.filter((t) => t.projectId === d.projectId && !t.milestone && (t.pct < 100 || linked.split("|").includes(t.id)) && !allTasks.some((c) => c.parentId === t.id)), [allTasks, d.projectId, linked]);
   const [crew, setCrew] = useState("");
   const set = <K extends keyof Diary>(k: K, v: Diary[K]) => setD((x) => ({ ...x, [k]: v }));
   const tot = diaryTotals(d);
@@ -70,8 +76,17 @@ function Form({ initial }: { initial: Diary }) {
   return (
     <div className="flex flex-col gap-5">
       {d.comment && <p className="rounded-[12px] bg-warn-soft px-3 py-2 text-[14px] text-warn">ความเห็นผู้ตรวจ: {d.comment}</p>}
+      <DiaryAssist
+        phone
+        diary={d}
+        filled={aiFilled}
+        onApply={(x, f) => {
+          setD(x);
+          setAiFilled(f);
+        }}
+      />
       <section>
-        <h2 className="mb-2 text-[15px] font-medium">สภาพอากาศ</h2>
+        <h2 className="mb-2 flex items-center gap-2 text-[15px] font-medium">สภาพอากาศ {ai("weather") && <AiPill />}</h2>
         {(["weatherAm", "weatherPm"] as const).map((k) => (
           <div key={k} className="mb-2">
             <p className="mb-1 text-[13px] text-ink-3">{k === "weatherAm" ? "ช่วงเช้า" : "ช่วงบ่าย"}</p>
@@ -93,7 +108,8 @@ function Form({ initial }: { initial: Diary }) {
 
       <section>
         <h2 className="mb-2 flex items-baseline justify-between text-[15px] font-medium">
-          กำลังคน <span className="num font-mono text-[14px] text-ink-2">{tot.headcount} คน</span>
+          <span className="flex items-center gap-2">กำลังคน {ai("manpower") && <AiPill />}</span>
+          <span className="num font-mono text-[14px] text-ink-2">{tot.headcount} คน</span>
         </h2>
         <ul className="flex flex-col divide-y divide-line rounded-[14px] border border-line bg-card">
           {d.manpower.map((m, i) => (
@@ -136,7 +152,7 @@ function Form({ initial }: { initial: Diary }) {
       </section>
 
       <section>
-        <h2 className="mb-2 text-[15px] font-medium">งานที่ทำวันนี้</h2>
+        <h2 className="mb-2 flex items-center gap-2 text-[15px] font-medium">งานที่ทำวันนี้ {ai("work") && <AiPill />}</h2>
         <div className="flex flex-col gap-3">
           {d.work.map((w, i) => (
             <div key={i} className="rounded-[14px] border border-line bg-card p-3">
@@ -178,13 +194,13 @@ function Form({ initial }: { initial: Diary }) {
       </section>
 
       <section className="flex flex-col gap-3">
-        <MLabel label="ปัญหา/ความล่าช้า">
+        <MLabel label={ai("issues") ? "ปัญหา/ความล่าช้า · AI" : "ปัญหา/ความล่าช้า"}>
           <textarea className={mArea} value={d.issues ?? ""} onChange={(e) => set("issues", e.target.value || undefined)} />
         </MLabel>
-        <MLabel label="วัสดุเข้าหน้างาน">
+        <MLabel label={ai("deliveries") ? "วัสดุเข้าหน้างาน · AI" : "วัสดุเข้าหน้างาน"}>
           <input className={mInput} value={d.deliveries ?? ""} onChange={(e) => set("deliveries", e.target.value || undefined)} />
         </MLabel>
-        <MLabel label="ความปลอดภัย">
+        <MLabel label={ai("safety") ? "ความปลอดภัย · AI" : "ความปลอดภัย"}>
           <input className={mInput} value={d.safety ?? ""} onChange={(e) => set("safety", e.target.value || undefined)} />
         </MLabel>
         <MediaField value={d.photos} onChange={(photos) => set("photos", photos)} label="รูปหน้างาน" photosOnly />

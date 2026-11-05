@@ -11,12 +11,17 @@ import { diaryTotals } from "@/lib/field/calc";
 import { saveDiary, submitDiary } from "@/lib/field/store";
 import type { Diary } from "@/lib/field/types";
 import { WEATHERS } from "./bits";
+import { AiPill } from "@/components/ai-field/ai-bits";
+import { DiaryAssist } from "@/components/ai-field/diary-assist";
+import type { DiaryFields } from "@/lib/ai-field/diary";
 
 const num = (s: string) => Math.max(0, Number(s.replace(/[^\d.]/g, "")) || 0);
 const OWN = "ทีมบริษัท";
 
 export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClose: () => void; onSaved?: (d: Diary) => void }) {
   const [d, setD] = useState<Diary>(initial);
+  const [aiFilled, setAiFilled] = useState<DiaryFields[]>([]);
+  const ai = (k: DiaryFields) => aiFilled.includes(k);
   const subs = subcontractors.use();
   const allTasks = wbsTasks.use();
   const tasks = useMemo(() => allTasks.filter((t) => t.projectId === d.projectId && !t.milestone && !allTasks.some((c) => c.parentId === t.id)).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })), [allTasks, d.projectId]);
@@ -63,8 +68,18 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
       }
     >
       {d.comment && d.status === "draft" && <p className="mb-4 rounded-[10px] bg-warn-soft px-3 py-2 text-[13px] text-warn">ความเห็นผู้ตรวจ: {d.comment}</p>}
+      <div className="mb-4">
+        <DiaryAssist
+          diary={d}
+          filled={aiFilled}
+          onApply={(x, f) => {
+            setD(x);
+            setAiFilled(f);
+          }}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Field label="อากาศช่วงเช้า">
+        <Field label={ai("weather") ? "อากาศช่วงเช้า · AI" : "อากาศช่วงเช้า"}>
           <Select label="อากาศช่วงเช้า" value={d.weatherAm} onChange={(v) => set("weatherAm", v as Weather)}>
             {WEATHERS.map((w) => (
               <option key={w} value={w}>
@@ -90,7 +105,7 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
         </Field>
       </div>
 
-      <Section title="กำลังคน" onAdd={() => set("manpower", [...d.manpower, { group: OWN, trade: "", count: 1 }])}>
+      <Section title="กำลังคน" ai={ai("manpower")} onAdd={() => set("manpower", [...d.manpower, { group: OWN, trade: "", count: 1 }])}>
         <datalist id="diary-groups">
           {groups.map((g) => (
             <option key={g} value={g} />
@@ -108,7 +123,7 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
         ))}
       </Section>
 
-      <Section title="เครื่องจักร/อุปกรณ์" onAdd={() => set("equipment", [...d.equipment, { name: "", hours: 8 }])}>
+      <Section title="เครื่องจักร/อุปกรณ์" ai={ai("equipment")} onAdd={() => set("equipment", [...d.equipment, { name: "", hours: 8 }])}>
         {d.equipment.length === 0 && <p className="text-[13px] text-ink-3">ไม่มีเครื่องจักรวันนี้</p>}
         {d.equipment.map((m, i) => (
           <div key={i} className="grid grid-cols-[1fr_88px_32px] items-center gap-2">
@@ -121,7 +136,7 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
         ))}
       </Section>
 
-      <Section title="งานที่ทำวันนี้" onAdd={() => set("work", [...d.work, { text: "" }])}>
+      <Section title="งานที่ทำวันนี้" ai={ai("work")} onAdd={() => set("work", [...d.work, { text: "" }])}>
         {tasks.length === 0 && <p className="text-[13px] text-ink-3">โครงการนี้ยังไม่มีแผนงาน WBS · บันทึกเป็นข้อความได้ เมื่อมีแผนงานแล้วเลือกงานและใส่ % เพื่ออัปเดตความคืบหน้า</p>}
         {d.work.map((w, i) => (
           <div key={i} className="grid grid-cols-1 items-center gap-2 md:grid-cols-[1fr_220px_88px_32px]">
@@ -150,16 +165,16 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
       </Section>
 
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="วัสดุเข้าหน้างาน">
+        <Field label={ai("deliveries") ? "วัสดุเข้าหน้างาน · AI" : "วัสดุเข้าหน้างาน"}>
           <textarea className={areaCls} value={d.deliveries ?? ""} onChange={(e) => set("deliveries", e.target.value || undefined)} />
         </Field>
-        <Field label="ปัญหา/ความล่าช้า">
+        <Field label={ai("issues") ? "ปัญหา/ความล่าช้า · AI" : "ปัญหา/ความล่าช้า"}>
           <textarea className={areaCls} value={d.issues ?? ""} onChange={(e) => set("issues", e.target.value || undefined)} />
         </Field>
-        <Field label="ผู้เข้าเยี่ยมชม/ตรวจงาน">
+        <Field label={ai("visitors") ? "ผู้เข้าเยี่ยมชม/ตรวจงาน · AI" : "ผู้เข้าเยี่ยมชม/ตรวจงาน"}>
           <textarea className={areaCls} value={d.visitors ?? ""} onChange={(e) => set("visitors", e.target.value || undefined)} />
         </Field>
-        <Field label="ความปลอดภัย">
+        <Field label={ai("safety") ? "ความปลอดภัย · AI" : "ความปลอดภัย"}>
           <textarea className={areaCls} value={d.safety ?? ""} onChange={(e) => set("safety", e.target.value || undefined)} />
         </Field>
       </div>
@@ -170,11 +185,14 @@ export function DiaryForm({ initial, onClose, onSaved }: { initial: Diary; onClo
   );
 }
 
-function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
+function Section({ title, onAdd, children, ai }: { title: string; onAdd: () => void; children: React.ReactNode; ai?: boolean }) {
   return (
     <section className="mt-5">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[14px] font-medium">{title}</h3>
+        <h3 className="flex items-center gap-2 text-[14px] font-medium">
+          {title}
+          {ai && <AiPill />}
+        </h3>
         <Btn small onClick={onAdd}>
           <Plus {...I} />
           เพิ่มแถว

@@ -42,6 +42,9 @@ import {
   type Supplier,
 } from "@/lib/procurement";
 import { Amt, BILL_LABEL, BILL_TONE, fmt, POStatusPill, PRStatusPill, Section, useProcPerms } from "./bits";
+import { AiBanner, AiPill, IssueList } from "@/components/ai-docs/bits";
+import { DeliveryNoteAi, GrInvoiceAi, QuoteAi, type AiResult } from "@/components/ai-docs/po-doc-ai";
+import type { MediaRef } from "@/lib/media";
 
 export function PurchaseDoc({ id }: { id: string }) {
   const hydrated = useHydrated();
@@ -358,6 +361,8 @@ function RFQEditor({ pr, onClose }: { pr: PurchaseRequest; onClose: () => void }
     if (s) setQuotes((qs) => [...qs, { supplierId: s.id, prices: pr.lines.map(() => 0), leadDays: 7, validUntil: addDays(TODAY, 30) }]);
   };
   const ok = quotes.every((q) => q.prices.every((p) => p > 0));
+  // cells the AI filled: "supplierId:line"
+  const [aiCells, setAiCells] = useState<Set<string>>(new Set());
   return (
     <Modal
       open
@@ -366,7 +371,17 @@ function RFQEditor({ pr, onClose }: { pr: PurchaseRequest; onClose: () => void }
       title={`ใบเสนอราคา ${pr.rfq?.id ?? "(ใหม่)"} · ${pr.id}`}
       footer={
         <>
-          <span className="mr-auto text-[13px] text-ink-3">เปรียบเทียบได้สูงสุด 3 ราย ราคาต่อหน่วยไม่รวม VAT</span>
+          <span className="mr-auto flex flex-wrap items-center gap-3 text-[13px] text-ink-3">
+            <QuoteAi
+              pr={pr}
+              quotes={quotes}
+              onApply={(q, lines) => {
+                setQuotes((qs) => (qs.some((x) => x.supplierId === q.supplierId) ? qs.map((x) => (x.supplierId === q.supplierId ? q : x)) : [...qs, q]));
+                setAiCells((c) => new Set([...[...c].filter((k) => !k.startsWith(q.supplierId + ":")), ...lines.map((i) => `${q.supplierId}:${i}`)]));
+              }}
+            />
+            เปรียบเทียบได้สูงสุด 3 ราย ราคาต่อหน่วยไม่รวม VAT
+          </span>
           <Btn onClick={onClose}>ยกเลิก</Btn>
           <Btn
             primary
@@ -434,7 +449,12 @@ function RFQEditor({ pr, onClose }: { pr: PurchaseRequest; onClose: () => void }
                   </span>
                 </td>
                 {quotes.map((q, qi) => (
-                  <td key={qi} className="py-2 pr-3">
+                  <td key={qi} className="relative py-2 pr-3">
+                    {aiCells.has(`${q.supplierId}:${li}`) && (
+                      <span className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2">
+                        <AiPill />
+                      </span>
+                    )}
                     <input
                       type="number"
                       min={0}
@@ -790,6 +810,8 @@ function ReceiveForm({ po, got, onClose }: { po: PurchaseOrder; got: number[]; o
   const [quality, setQuality] = useState(4);
   const [photos, setPhotos] = useState(0);
   const [note, setNote] = useState("");
+  const [ai, setAi] = useState<(AiResult & { qty: number[] }) | null>(null);
+  const [docs, setDocs] = useState<MediaRef[]>([]);
   const ok = qty.some((q) => q > 0) && qty.every((q, i) => q >= 0 && q <= remain[i]) && receiver.trim();
   return (
     <Modal
@@ -804,7 +826,8 @@ function ReceiveForm({ po, got, onClose }: { po: PurchaseOrder; got: number[]; o
             primary
             disabled={!ok}
             onClick={() => {
-              receivePO(po.id, { date, receiver: receiver.trim(), qty, photos, quality, note: note || undefined });
+              const gr = receivePO(po.id, { date, receiver: receiver.trim(), qty, photos: photos + docs.length, quality, note: note || undefined });
+              if (gr && docs.length) goodsReceipts.upsert({ ...gr, docs } as GoodsReceipt & { docs: MediaRef[] });
               onClose();
             }}
           >
@@ -813,6 +836,26 @@ function ReceiveForm({ po, got, onClose }: { po: PurchaseOrder; got: number[]; o
         </>
       }
     >
+      {po.kind === "goods" && (
+        <div className="mb-3 flex justify-end">
+          <DeliveryNoteAi
+            po={po}
+            remain={remain}
+            onApply={(r) => {
+              setAi(r);
+              setQty(r.qty);
+              setDocs(r.refs);
+              if (r.date && r.date <= TODAY) setDate(r.date);
+              if (r.docNo) setNote((n) => n || `ใบส่งของเลขที่ ${r.docNo}`);
+            }}
+          />
+        </div>
+      )}
+      {ai && (
+        <AiBanner confidence={ai.confidence} refs={docs} note={ai.note}>
+          <IssueList issues={ai.issues} />
+        </AiBanner>
+      )}
       <table className="w-full text-left text-[13px]">
         <thead>
           <tr className="text-ink-3">
@@ -831,7 +874,12 @@ function ReceiveForm({ po, got, onClose }: { po: PurchaseOrder; got: number[]; o
               </td>
               <td className="num py-2 pr-3 text-right font-mono">{l.qty.toLocaleString("th-TH")}</td>
               <td className="num py-2 pr-3 text-right font-mono text-ink-3">{got[i].toLocaleString("th-TH")}</td>
-              <td className="py-2">
+              <td className="relative py-2">
+                {ai && ai.qty[i] === qty[i] && qty[i] > 0 && (
+                  <span className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2">
+                    <AiPill />
+                  </span>
+                )}
                 <input
                   type="number"
                   min={0}
@@ -888,6 +936,7 @@ function ReceiveForm({ po, got, onClose }: { po: PurchaseOrder; got: number[]; o
 function BillForm({ gr, po, s, onClose }: { gr: GoodsReceipt; po: PurchaseOrder; s: Supplier; onClose: () => void }) {
   const [date, setDate] = useState(TODAY < gr.date ? gr.date : TODAY);
   const [invoiceNo, setInvoiceNo] = useState("");
+  const [ai, setAi] = useState<(AiResult & { invoiceNo: string; date: string }) | null>(null);
   const subtotal = gr.lines.reduce((t, x) => t + x.qty * po.lines[x.line].unitPrice, 0);
   const vat = (subtotal * po.vatRate) / 100;
   return (
@@ -902,7 +951,8 @@ function BillForm({ gr, po, s, onClose }: { gr: GoodsReceipt; po: PurchaseOrder;
           <Btn
             primary
             onClick={() => {
-              createBillFromGR(gr.id, { date, invoiceNo: invoiceNo || undefined });
+              const bill = createBillFromGR(gr.id, { date, invoiceNo: invoiceNo || undefined });
+              if (bill && ai) supplierBills.upsert({ ...bill, docs: ai.refs, aiRead: { at: TODAY, confidence: ai.confidence } } as typeof bill);
               onClose();
             }}
           >
@@ -911,7 +961,25 @@ function BillForm({ gr, po, s, onClose }: { gr: GoodsReceipt; po: PurchaseOrder;
         </>
       }
     >
-      <p className="text-[14px]">{s.name}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[14px]">{s.name}</p>
+        <GrInvoiceAi
+          po={po}
+          gr={gr}
+          onApply={(r) => {
+            setAi(r);
+            if (r.invoiceNo) setInvoiceNo(r.invoiceNo);
+            if (r.date && r.date >= gr.date && r.date <= TODAY) setDate(r.date);
+          }}
+        />
+      </div>
+      {ai && (
+        <div className="mt-3">
+          <AiBanner confidence={ai.confidence} refs={ai.refs} note={ai.note}>
+            {ai.issues.length ? <IssueList issues={ai.issues} /> : <p className="text-pos">รายการและยอดเงินตรงกับที่รับสินค้า</p>}
+          </AiBanner>
+        </div>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-4">
         <Field label="วันที่ใบแจ้งหนี้">
           <input type="date" value={date} min={gr.date} max={TODAY} onChange={(e) => setDate(e.target.value)} className={cx(inputCls, "font-mono")} />

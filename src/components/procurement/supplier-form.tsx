@@ -59,7 +59,7 @@ export function SupplierForm({ initial, onClose, onSaved }: { initial?: Supplier
       open
       onClose={onClose}
       width={760}
-      title={initial ? `แก้ไขผู้ขาย ${initial.id}` : "เพิ่มผู้ขาย / ผู้รับเหมาช่วง"}
+      title={initial?.id ? `แก้ไขผู้ขาย ${initial.id}` : "เพิ่มผู้ขาย / ผู้รับเหมาช่วง"}
       footer={
         <>
           <Btn onClick={onClose}>ยกเลิก</Btn>

@@ -9,6 +9,7 @@ import { PROVINCES } from "@/lib/projects-store";
 import { thDate, TODAY } from "@/lib/data";
 import { bidPriceOf, vsPct, winStats } from "@/lib/tender/calc";
 import { newTender, tenders } from "@/lib/tender/store";
+import { TenderAiButton } from "@/components/ai-docs/tender-ai";
 import { METHOD_LABEL, SOURCE_LABEL, TENDER_STATUS_LABEL, type Tender, type TenderMethod, type TenderSource, type TenderStatus } from "@/lib/tender/types";
 import { canEdit } from "@/lib/permissions";
 import { useMe } from "@/lib/use-me";
@@ -179,6 +180,15 @@ export function TendersView() {
 
 function NewTender({ onClose, onSaved, owner }: { onClose: () => void; onSaved: (t: Tender) => void; owner: string }) {
   const [f, setF] = useState({ title: "", client: "", source: "egp" as TenderSource, method: "e-bidding" as TenderMethod, province: PROVINCES[0], budget: "", egpNo: "", submitDue: new Date(Date.parse(TODAY) + 14 * DAY).toISOString().slice(0, 10), siteVisit: "" });
+  // what the AI read from the TOR beyond the fields of this form (kept and saved with the tender)
+  const [extra, setExtra] = useState<Partial<Tender>>({});
+  const provinces = PROVINCES.includes(f.province) ? PROVINCES : [f.province, ...PROVINCES];
+  const fromDoc = (fn: (t: Tender) => Tender, refs: Tender["docs"]) => {
+    const base: Tender = { id: "", title: f.title, client: f.client, source: f.source, method: f.method, province: f.province, budget: Number(f.budget) || undefined, egpNo: f.egpNo || undefined, submitDue: f.submitDue, siteVisit: f.siteVisit || undefined, status: "prospect", owner, docs: [], lines: [], markupPct: 0, vatPct: 7, createdAt: TODAY };
+    const t = fn(base);
+    setF({ title: t.title, client: t.client, source: t.source, method: t.method, province: t.province, budget: t.budget ? String(Math.round(t.budget)) : "", egpNo: t.egpNo ?? "", submitDue: t.submitDue, siteVisit: t.siteVisit ?? "" });
+    setExtra({ medianPrice: t.medianPrice, announced: t.announced, questionsDue: t.questionsDue, openDate: t.openDate, torNote: t.torNote, bidBond: t.bidBond, lines: t.lines, docs: refs });
+  };
   return (
     <Modal
       open
@@ -187,12 +197,15 @@ function NewTender({ onClose, onSaved, owner }: { onClose: () => void; onSaved: 
       width={640}
       footer={
         <>
+          <span className="mr-auto">
+            <TenderAiButton label="กรอกจาก TOR ด้วย AI" onApply={fromDoc} />
+          </span>
           <Btn onClick={onClose}>ยกเลิก</Btn>
           <Btn
             primary
             disabled={!f.title.trim() || !f.client.trim()}
             onClick={() => {
-              const t = newTender({ title: f.title.trim(), client: f.client.trim(), source: f.source, method: f.method, province: f.province, submitDue: f.submitDue, owner, budget: Number(f.budget) || undefined, egpNo: f.egpNo.trim() || undefined, siteVisit: f.siteVisit || undefined, announced: TODAY });
+              const t = newTender({ ...extra, title: f.title.trim(), client: f.client.trim(), source: f.source, method: f.method, province: f.province, submitDue: f.submitDue, owner, budget: Number(f.budget) || undefined, egpNo: f.egpNo.trim() || undefined, siteVisit: f.siteVisit || undefined, announced: extra.announced ?? TODAY });
               onSaved(t);
               onClose();
             }}
@@ -202,6 +215,11 @@ function NewTender({ onClose, onSaved, owner }: { onClose: () => void; onSaved: 
         </>
       }
     >
+      {extra.docs?.length ? (
+        <p className="mb-3 rounded-[8px] bg-accent-soft/50 px-3 py-2 text-[13px] text-ink-2">
+          AI กรอกจากเอกสาร {extra.docs.map((d) => d.name).join(", ")} แล้ว{extra.lines?.length ? ` · BOQ ${extra.lines.length} รายการ` : ""}{extra.torNote ? " · สรุป TOR" : ""} ตรวจทุกช่องก่อนบันทึก
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <Field label="ชื่องาน">
@@ -233,7 +251,7 @@ function NewTender({ onClose, onSaved, owner }: { onClose: () => void; onSaved: 
         </Field>
         <Field label="จังหวัด">
           <Select label="จังหวัด" value={f.province} onChange={(v) => setF({ ...f, province: v })}>
-            {PROVINCES.map((p) => (
+            {provinces.map((p) => (
               <option key={p}>{p}</option>
             ))}
           </Select>

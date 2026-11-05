@@ -8,6 +8,7 @@ import { getProject, TODAY } from "@/lib/data";
 import { sheetIndex } from "@/lib/drawing/sheets";
 import { addDays, DISC_LABEL, DISCS, nextRfiId, PRIORITY_LABEL, rfis, type Disc, type Priority, type Rfi } from "@/lib/engineering";
 import { Area, Check, PeopleList, ProjectSelect, useEngPerms } from "./bits";
+import { RfiAssist } from "@/components/ai-field/eng-assist";
 
 const DUE_BY_PRIORITY: Record<Priority, number> = { urgent: 2, high: 5, normal: 7, low: 14 };
 
@@ -88,6 +89,25 @@ function Inner({ onClose, edit, initProject, onSaved }: { onClose: () => void; e
       }
     >
       <PeopleList />
+      <div className="mb-4">
+        <RfiAssist
+          projectId={projectId}
+          sheets={sheets}
+          attachments={attachments}
+          onApply={(d) => {
+            if (d.subject) setSubject(d.subject);
+            if (d.question) setQuestion(d.question);
+            if (d.proposal) setProposal(d.proposal);
+            setDisc(d.disc);
+            if (d.location) setLocation(d.location);
+            if (d.sheet) setSheet(d.sheet);
+            setPriority(d.priority);
+            if (!edit) setDue(addDays(TODAY, DUE_BY_PRIORITY[d.priority]));
+            setCost(d.costImpact);
+            setTime(d.timeImpact);
+          }}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="โครงการ">
           {edit ? <input value={`${projectId} · ${getProject(projectId)?.name ?? ""}`} disabled className={inputCls} /> : <ProjectSelect value={projectId} onChange={setProjectId} required />}

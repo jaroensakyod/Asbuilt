@@ -22,6 +22,7 @@ import { useLocalProjects } from "@/lib/projects-store";
 import { isLiveReady, workspace } from "@/lib/workspace";
 import { signedDocUrl, uploadDocFile, useSignedDocUrl, type StoredDoc } from "@/lib/doc-files";
 import { coverSvg, svgDataUrl } from "./cover";
+import { DocAskButton } from "@/components/ai-docs/doc-ask";
 
 import { uploads, overrides, type Override } from "@/lib/docs-store";
 
@@ -630,6 +631,9 @@ function PreviewPanel({
             <Download size={16} strokeWidth={1.5} />
             {doc.local || sessionUrls.has(doc.id) || (doc as StoredDoc).storagePath ? "ดาวน์โหลด" : "ดาวน์โหลดปกเอกสาร"}
           </button>
+          {(doc.type === "pdf" || doc.type === "image") && (
+            <DocAskButton title={doc.title} fileName={doc.file} category={doc.category} mime={doc.mime} getBlob={async () => (url ? fetch(url).then((r) => r.blob()) : undefined)} />
+          )}
           <button type="button" className={btnGhost} onClick={onEdit}>
             <Pencil size={16} strokeWidth={1.5} />
             แก้ไข

@@ -31,6 +31,10 @@ import {
   type LeadSource,
 } from "@/lib/sales/crm";
 import { I, n0, QUOTE_TONE, STAGE_TONE, Td, Th, theadCls, useCostAccess } from "./common";
+import { AiButton } from "@/components/ai-sales/bits";
+import { LeadBriefModal } from "@/components/ai-sales/lead-brief";
+import { QuoteDraftModal } from "@/components/ai-sales/quote-draft";
+import type { LeadBrief } from "@/lib/ai-sales/lead";
 
 export function LeadDetail({ id }: { id: string }) {
   const hydrated = useHydrated();
@@ -51,6 +55,8 @@ function Detail({ lead }: { lead: Lead }) {
   const [date, setDate] = useState(TODAY);
   const [lostReason, setLostReason] = useState("");
   const [askLost, setAskLost] = useState(false);
+  const [aiBrief, setAiBrief] = useState(false);
+  const [aiQuote, setAiQuote] = useState<{ model?: string; brief?: LeadBrief } | null>(null);
   const save = (patch: Partial<Lead>) => leads.upsert({ ...lead, ...patch, updated: TODAY });
 
   const newQuote = () => {
@@ -79,6 +85,8 @@ function Detail({ lead }: { lead: Lead }) {
         </div>
         {editable && (
           <div className="flex flex-wrap items-center gap-2">
+            <AiButton onClick={() => setAiBrief(true)}>สรุปความต้องการ</AiButton>
+            {!closed && <AiButton onClick={() => setAiQuote({})}>ร่างใบเสนอราคา</AiButton>}
             {canSeeCost && (
               <Btn onClick={() => router.push(`/estimating?lead=${lead.id}&model=${lead.models[0] ?? ""}`)}>
                 <Calculator {...I} />
@@ -355,6 +363,17 @@ function Detail({ lead }: { lead: Lead }) {
           {lead.lostReason && lead.stage === "lost" && <p className="rounded-[10px] border border-line bg-card px-4 py-3 text-[13px] text-neg">เหตุผลที่แพ้: {lead.lostReason}</p>}
         </div>
       </div>
+      {aiBrief && (
+        <LeadBriefModal
+          lead={lead}
+          onClose={() => setAiBrief(false)}
+          onQuote={(model, brief) => {
+            setAiBrief(false);
+            setAiQuote({ model, brief });
+          }}
+        />
+      )}
+      {aiQuote && <QuoteDraftModal lead={lead} modelCode={aiQuote.model} brief={aiQuote.brief} onClose={() => setAiQuote(null)} />}
     </>
   );
 }

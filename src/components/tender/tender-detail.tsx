@@ -17,6 +17,7 @@ import { canEdit } from "@/lib/permissions";
 import { useMe } from "@/lib/use-me";
 import { TENDER_TONE, mb } from "./tenders-view";
 import { TenderSettingsButton, VERIFY } from "./tender-settings";
+import { TenderAiButton } from "@/components/ai-docs/tender-ai";
 
 type Tab = "overview" | "boq" | "result" | "contract" | "k";
 const baht = (n: number) => `฿${Math.round(n).toLocaleString("th-TH")}`;
@@ -120,7 +121,7 @@ function Sheet({ saved }: { saved: Tender }) {
         <Segmented value={tab} onChange={setTab} options={tabs} />
       </div>
 
-      {tab === "overview" && <Overview t={t} set={set} editable={editable} />}
+      {tab === "overview" && <Overview t={t} set={set} setT={setT} editable={editable} />}
       {tab === "boq" && <Boq t={t} set={set} editable={editable} />}
       {tab === "result" && <Result t={t} setT={setT} editable={editable} />}
       {tab === "contract" && <Contract t={t} set={set} editable={editable} />}
@@ -147,7 +148,7 @@ type SetFn = <K extends keyof Tender>(k: K, v: Tender[K]) => void;
 
 // ---------- overview ----------
 
-function Overview({ t, set, editable }: { t: Tender; set: SetFn; editable: boolean }) {
+function Overview({ t, set, setT, editable }: { t: Tender; set: SetFn; setT: (f: (x: Tender) => Tender) => void; editable: boolean }) {
   const s = useTenderSettings();
   const dates: [keyof Tender, string][] = [
     ["announced", "ประกาศ/ได้รับเชิญ"],
@@ -207,7 +208,24 @@ function Overview({ t, set, editable }: { t: Tender; set: SetFn; editable: boole
 
       <div className="flex flex-col gap-4">
         <Card>
-          <CardHead title="TOR และเอกสารประกวดราคา" />
+          <CardHead
+            title="TOR และเอกสารประกวดราคา"
+            action={
+              editable && (
+                <TenderAiButton
+                  t={t}
+                  existing={t.docs}
+                  onApply={(fn, refs) =>
+                    setT((x) => {
+                      const y = fn(x);
+                      const have = new Set(y.docs.map((d) => d.id));
+                      return { ...y, docs: [...y.docs, ...refs.filter((r) => !have.has(r.id))] };
+                    })
+                  }
+                />
+              )
+            }
+          />
           <div className="flex flex-col gap-3 px-5 py-4">
             <textarea className={areaCls} value={t.torNote ?? ""} disabled={!editable} onChange={(e) => set("torNote", e.target.value || undefined)} placeholder="สรุป TOR: คุณสมบัติผู้เสนอราคา ผลงาน ระยะเวลา เงื่อนไขพิเศษ" />
             <MediaField value={t.docs} onChange={(docs) => set("docs", docs)} label="TOR แบบ BOQ ประกาศ และเอกสารยื่นซอง" />

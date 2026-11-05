@@ -9,6 +9,8 @@ import { getProject, thDate, TODAY } from "@/lib/data";
 import { ACTION_STATUS_LABEL, actionItems, MEETING_TYPE_LABEL, meetings, nextPlainId, type ActionItem, type ActionStatus, type Meeting } from "@/lib/engineering";
 import { Area, Back, DocHeader, DocRow, DocSection, Due, pname, PeopleList, Signatures, useEngPerms } from "./bits";
 import { ACTION_TONE, isOverdue, NewMeetingModal } from "./meetings-view";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { MinutesAssist } from "@/components/ai-field/minutes-assist";
 
 export function MeetingDetail({ id }: { id: string }) {
   const all = meetings.use();
@@ -32,6 +34,7 @@ function Body({ meeting }: { meeting: Meeting }) {
   const [nextOpen, setNextOpen] = useState(false);
   const [newAtt, setNewAtt] = useState({ name: "", org: "" });
   const [newAct, setNewAct] = useState({ text: "", owner: "", due: TODAY });
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
   const ro = !perms.edit;
   const p = getProject(m.projectId);
 
@@ -141,6 +144,20 @@ function Body({ meeting }: { meeting: Meeting }) {
               </div>
             </Card>
 
+            {!ro && (
+              <div className="flex flex-col gap-2">
+                <MinutesAssist
+                  meeting={m}
+                  carried={carried.map((a) => `${a.text} (${a.owner})`)}
+                  onApply={(d) => {
+                    set({ minutes: d.minutes || m.minutes, decisions: d.decisions.length ? d.decisions : m.decisions, agenda: m.agenda.some((x) => x.trim()) || !d.agenda.length ? m.agenda : d.agenda });
+                    for (const a of d.actions) actionItems.upsert({ id: nextPlainId(actionItems.all(), "ACT", m.projectId), projectId: m.projectId, meetingId: m.id, text: a.text.trim(), owner: a.owner.trim(), due: a.due, status: "open" });
+                    setAiFilled(["บันทึกการประชุม", "มติ", ...(d.actions.length ? [`งาน ${d.actions.length} รายการ`] : [])]);
+                  }}
+                />
+                <AiFilledNote fields={aiFilled} />
+              </div>
+            )}
             <Card>
               <CardHead title="บันทึกการประชุม" />
               <div className="px-5 py-4">

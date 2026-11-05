@@ -15,6 +15,7 @@ import { estimates, leads, QUOTE_STATUS_LABEL, quotes, quoteStatus, quoteTotals,
 import { modelBoq } from "@/lib/sales/seed-biz";
 import { dueDateOf, MILESTONE_LABEL, TERM_TEMPLATES, type PayTerm } from "@/lib/sales/terms";
 import { I, mb, n0, n2, QUOTE_TONE, Td, Th, theadCls, useCostAccess } from "./common";
+import { QuoteFollowUpButton } from "@/components/ai-sales/quote-followup";
 
 const addDays = (iso: string, d: number) => new Date(Date.parse(iso) + d * 86400000).toISOString().slice(0, 10);
 
@@ -73,6 +74,7 @@ function Editor({ q }: { q: Quote }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canEdit(me.role, "sales") && q.customer.name && <QuoteFollowUpButton q={q} />}
           <Btn onClick={() => window.print()}>
             <Printer {...I} />
             พิมพ์

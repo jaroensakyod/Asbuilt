@@ -13,6 +13,7 @@ import { ACC_TODAY, apPaymentsCol, isLockedDate, LOCKED_MSG, useAccess, useBooks
 import type { ApPayment, BillX } from "@/lib/accounting/types";
 import { Btn, CsvButton, Empty, I, Labeled, Modal, Notice, Num, numInput, Pill, PrintSheet, tableCls, td, tdR, th, thR } from "./bits";
 import { VoucherDoc } from "./docs";
+import { BillFromDocButton } from "@/components/ai-docs/bill-from-doc";
 
 const STATUS: Record<SupplierBill["status"], { label: string; tone: "neutral" | "accent" | "pos" }> = {
   open: { label: "รออนุมัติ", tone: "neutral" },
@@ -53,6 +54,7 @@ export function PurchasesView() {
           meta={`ค้างจ่าย ${unpaid.length} ใบ · ${fmt(ag.total)} บาท`}
           action={
             <div className="flex items-center gap-2">
+              {edit && <BillFromDocButton label="อ่านบิลผู้ขายด้วย AI" />}
               <select aria-label="สถานะ" className={inputCls} value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
                 <option value="unpaid">ค้างจ่าย</option>
                 <option value="paid">จ่ายแล้ว</option>

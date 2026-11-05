@@ -6,7 +6,12 @@ import { Search } from "lucide-react";
 import { AssetTag, Field, cx, inputCls } from "@/components/ui";
 import { projects, SEVERITY_LABEL, SOURCE_LABEL, SYSTEM_LABEL, team, thDate, TODAY, type RepairSource, type Severity } from "@/lib/data";
 import { roomOf } from "@/lib/house";
-import { addRepair, createWorkOrderFromRepair, type OpsRepair, type OpsWorkOrder } from "@/lib/ops-store";
+import { addRepair, createWorkOrderFromRepair, type NewRepair, type OpsRepair, type OpsWorkOrder } from "@/lib/ops-store";
+import { MediaField } from "@/components/media/media-field";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { DefectAssist } from "@/components/ai-field/defect-assist";
+import { defectDetailText, type AssetCandidate } from "@/lib/ai-field/defect";
+import type { MediaRef } from "@/lib/media";
 import { assetLocation, ownerShort, projectAssets, SLA_HOURS, TECH_BY_SYSTEM } from "./seed";
 import { areaCls, Btn, I, Modal } from "./bits";
 
@@ -44,6 +49,9 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
   const [reporter, setReporter] = useState(ownerShort(initialProject));
   const [assignee, setAssignee] = useState(asset ? TECH_BY_SYSTEM[asset.system] : TECHNICIANS[0] ?? "");
   const [withWo, setWithWo] = useState(false);
+  const [photos, setPhotos] = useState<MediaRef[]>([]);
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
+  const candidates = useMemo<AssetCandidate[]>(() => (model ? assets.filter((a) => a.category !== "เบรกเกอร์ลูกย่อย").map((a) => ({ code: a.code, name: a.name, system: a.system, category: a.category, location: assetLocation(model, a) })) : []), [assets, model]);
 
   const found = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -73,7 +81,9 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
   const valid = !!asset && title.trim().length > 0;
   const save = () => {
     if (!asset || !model || !valid) return;
-    const r = addRepair({
+    // photos ride along on the record (OpsRepair has no photo field yet)
+    const input: NewRepair & { photos?: MediaRef[] } = {
+      photos: photos.length ? photos : undefined,
       title: title.trim(),
       detail: detail.trim(),
       asset: asset.code,
@@ -85,7 +95,8 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
       source,
       assignee,
       reporter: reporter.trim() || undefined,
-    });
+    };
+    const r = addRepair(input);
     const wo = withWo ? createWorkOrderFromRepair(r.id) : undefined;
     onSaved?.(r, wo);
     onClose();
@@ -177,6 +188,28 @@ function Body({ onClose, preset, onSaved }: { onClose: () => void; preset?: Repa
           <Field label="รายละเอียด">
             <textarea value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="สิ่งที่พบ เวลาที่เกิด ความถี่" className={areaCls} />
           </Field>
+        </div>
+        <div className="col-span-2 flex flex-col gap-2">
+          <MediaField value={photos} onChange={setPhotos} label="รูปอาการ (ไม่บังคับ)" photosOnly />
+          <DefectAssist
+            photos={photos}
+            note={[title, detail].filter(Boolean).join(" · ")}
+            context={project?.status === "delivered" ? "repair" : "construction"}
+            assets={candidates}
+            onApply={(s) => {
+              setTitle(s.title);
+              setDetail(defectDetailText(s));
+              setSeverity(s.severity);
+              const f = ["อาการ", "รายละเอียด", "ความรุนแรง"];
+              if (s.asset) {
+                chooseAsset(s.asset.code);
+                setQ(s.asset.code);
+                f.push("อุปกรณ์");
+              }
+              setAiFilled(f);
+            }}
+          />
+          <AiFilledNote fields={aiFilled} />
         </div>
         <div className="col-span-2 flex flex-col gap-1.5 text-[13px] text-ink-2">
           ความรุนแรง

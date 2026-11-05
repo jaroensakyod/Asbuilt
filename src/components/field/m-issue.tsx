@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Check, MapPin } from "lucide-react";
 import { cx } from "@/components/ui";
@@ -12,6 +12,10 @@ import type { MediaRef } from "@/lib/media";
 import { useMe } from "@/lib/use-me";
 import { getPosition, MBtn, mArea, mInput, MLabel, MShell } from "./bits";
 import { useSite } from "./m-hub";
+import { AiFilledNote } from "@/components/ai-field/ai-bits";
+import { assetCandidates } from "@/components/ai-field/candidates";
+import { DefectAssist } from "@/components/ai-field/defect-assist";
+import { defectDetailText } from "@/lib/ai-field/defect";
 
 const SYSTEMS = Object.keys(SYSTEM_LABEL) as SystemKey[];
 
@@ -42,7 +46,9 @@ export function MIssue() {
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [done, setDone] = useState<FieldIssue | null>(null);
+  const [aiFilled, setAiFilled] = useState<string[]>([]);
   const choices = projects.filter((p) => p.status !== "planning");
+  const assets = useMemo(() => (projectId ? assetCandidates(projectId) : []), [projectId]);
 
   if (done)
     return (
@@ -64,6 +70,7 @@ export function MIssue() {
                 setLocation("");
                 setPhotos([]);
                 setPin(null);
+                setAiFilled([]);
               }}
             >
               แจ้งเรื่องถัดไป
@@ -124,6 +131,23 @@ export function MIssue() {
           <textarea value={detail} onChange={(e) => setDetail(e.target.value)} className={mArea} />
         </MLabel>
         <MediaField value={photos} onChange={setPhotos} label="รูปถ่าย" photosOnly />
+        <DefectAssist
+          phone
+          photos={photos}
+          note={[title, detail].filter(Boolean).join(" · ")}
+          location={location}
+          context={kind === "repair" ? "repair" : "construction"}
+          assets={assets}
+          onApply={(s) => {
+            setTitle(s.title);
+            setSystem(s.system);
+            setSeverity(s.severity);
+            setDetail([defectDetailText(s), s.asset ? `อุปกรณ์: ${s.asset.code} ${s.asset.name}` : ""].filter(Boolean).join("\n"));
+            if (!location.trim() && (s.location || s.asset?.location)) setLocation(s.location || s.asset?.location || "");
+            setAiFilled(["เรื่อง", "ระบบงาน", "ความรุนแรง", "รายละเอียด"]);
+          }}
+        />
+        <AiFilledNote phone fields={aiFilled} />
         <div className="rounded-[14px] border border-line bg-card p-3">
           <p className="text-[14px]">ปักหมุดตำแหน่ง</p>
           <p className="mt-0.5 text-[13px] text-ink-3">{pin ? `${pin.lat}, ${pin.lng}` : "ยังไม่ได้ปักหมุด (ไม่บังคับ)"}</p>

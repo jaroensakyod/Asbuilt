@@ -30,8 +30,10 @@ import {
   type SelCategory,
   type Selection,
   type SelectionOption,
+  type Product,
 } from "@/lib/interior";
 import { Amt, Check, Header, NumInput, Swatch, dateOr, usePerms } from "@/components/design/bits";
+import { AiSelectionSuggest } from "@/components/ai-sales/selection-suggest";
 
 const ST_TONE = { pending: "warn", chosen: "accent", approved: "pos" } as const;
 const VO_LABEL: Record<string, string> = { draft: "ร่าง", priced: "ตีราคาแล้ว", submitted: "รอลูกค้าอนุมัติ", approved: "ลูกค้าอนุมัติแล้ว", rejected: "ลูกค้าไม่อนุมัติ", void: "ยกเลิก" };
@@ -279,6 +281,16 @@ function SelectionForm({ projectId, initial, rooms, onClose }: { projectId: stri
     const pr = prods.find((x) => x.id === pid);
     if (pr) setOpt(id, { productId: pid, name: pr.name, price: pr.clientPrice, cost: pr.tradeCost, swatch: pr.swatch, supplierId: pr.supplierId, images: pr.images });
   };
+  const addFromAi = (picks: { product: Product; reason: string }[]) => {
+    const opts = [...v.options];
+    for (const { product: pr, reason } of picks) {
+      const o: Partial<SelectionOption> = { productId: pr.id, name: pr.name, price: pr.clientPrice, cost: pr.tradeCost, swatch: pr.swatch, supplierId: pr.supplierId, images: pr.images, note: reason };
+      const blank = opts.findIndex((x) => !x.name.trim());
+      if (blank >= 0) opts[blank] = { ...opts[blank], ...o };
+      else opts.push({ ...blankOption(opts.length), ...o });
+    }
+    setV({ ...v, options: opts });
+  };
   const valid = v.item.trim() && v.qty > 0 && v.options.filter((o) => o.name.trim()).length >= 1;
   const save = () => {
     selections.upsert({ ...v, item: v.item.trim(), options: v.options.filter((o) => o.name.trim()) });
@@ -356,6 +368,7 @@ function SelectionForm({ projectId, initial, rooms, onClose }: { projectId: stri
           เพิ่มตัวเลือก
         </Btn>
       </div>
+      <AiSelectionSuggest sel={v} onAdd={addFromAi} />
       <div className="mt-2 flex flex-col gap-3">
         {v.options.map((o, i) => (
           <div key={o.id} className="rounded-[10px] border border-line p-3">

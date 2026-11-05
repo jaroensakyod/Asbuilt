@@ -9,6 +9,7 @@ import { saveTenderSettings, TENDER_DEFAULTS, useTenderSettings } from "@/lib/te
 import { INDEX_LABEL, type TenderSettings } from "@/lib/tender/types";
 import { canEdit } from "@/lib/permissions";
 import { useMe } from "@/lib/use-me";
+import { IndexImportButtons } from "./index-import";
 
 export const VERIFY = "ตรวจสอบกับประกาศล่าสุด";
 const numCls = cx(inputCls, "num h-8 px-2 text-right font-mono text-[13px]");
@@ -197,6 +198,16 @@ function SettingsModal({ onClose, readOnly }: { onClose: () => void; readOnly: b
 
       {tab === "index" && (
         <div className="overflow-x-auto">
+          {!readOnly && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <IndexImportButtons settings={s} onApply={(patch) => setS({ ...s, ...patch })} />
+              {s.indexLog?.[0] && (
+                <span className="text-[12px] text-ink-3">
+                  นำเข้าล่าสุด {s.indexLog[0].at.slice(0, 10)} · {s.indexLog[0].via === "moc-api" ? "API กระทรวงพาณิชย์" : `ไฟล์ ${s.indexLog[0].file ?? ""}`} · {s.indexLog[0].cells} ค่า
+                </span>
+              )}
+            </div>
+          )}
           <table className="text-[12px]">
             <thead>
               <tr className="text-ink-3">
@@ -242,7 +253,7 @@ function SettingsModal({ onClose, readOnly }: { onClose: () => void; readOnly: b
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[12px] text-ink-3">ดัชนีตัวอย่างสำหรับทดลอง ให้กรอกดัชนีราคาที่สำนักงานนโยบายและยุทธศาสตร์การค้าประกาศ — {VERIFY}</p>
+          <p className="mt-2 text-[12px] text-ink-3">{s.indexLog?.length ? "มีดัชนีที่นำเข้าจากแหล่งทางการแล้วบางส่วน เดือนอื่นยังเป็นดัชนีตัวอย่าง" : "ดัชนีตัวอย่างสำหรับทดลอง"} ให้ใช้ดัชนีราคาที่สำนักงานนโยบายและยุทธศาสตร์การค้าประกาศ (ดึงจาก API หรืออ่านไฟล์ประกาศ) และใช้ชุดเดียวกันทั้งเดือนเปิดซองและเดือนส่งงาน — {VERIFY}</p>
         </div>
       )}
     </Modal>

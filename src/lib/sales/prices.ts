@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { createCollection } from "../collection";
 import { createLocalStore } from "../projects-store";
 import { COST_CODES, type CostCode } from "../biz";
+import { mergeObs, obsId } from "../price-feeds/merge";
 import {
   CURRENT_MONTH,
   makePriceBook,
@@ -166,16 +167,24 @@ export function importPriceRows(rows: CsvRow[]) {
   if (newItems.size) priceItems.upsertMany([...newItems.values()]);
   priceObs.upsertMany(
     ok.map((r) => ({
-      id: `O-${r.code}-${r.source}-${r.date!.slice(0, 7)}${r.province ? `-${r.province}` : ""}`,
+      id: obsId({ itemCode: r.code, source: r.source!, date: r.date!, province: r.province }),
       itemCode: r.code,
       source: r.source!,
       date: r.date!,
       price: r.price!,
       province: r.province,
       importedAt: now,
+      via: "csv" as const,
     })),
   );
   return { items: newItems.size, obs: ok.length };
+}
+
+/** Upsert observations from a feed (MOC sync, AI file import), deduped by item/source/kind/province/month. */
+export function importObs(incoming: PriceObs[]) {
+  const r = mergeObs(priceObs.all(), incoming);
+  if (r.rows.length) priceObs.upsertMany(r.rows);
+  return { added: r.added, updated: r.updated, unchanged: r.unchanged };
 }
 
 const esc = (s: string | number | undefined) => {

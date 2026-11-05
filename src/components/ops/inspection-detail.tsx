@@ -24,6 +24,7 @@ import { MediaField, MediaStrip } from "@/components/media/media-field";
 import type { MediaRef } from "@/lib/media";
 import { InspectionForm } from "./inspection-form";
 import { RESULT_LABEL, RESULT_TONE } from "./inspections-view";
+import { InspectItemAssist } from "@/components/ai-field/inspect-assist";
 
 const R_LABEL: Record<ItemResult, string> = { pass: "ผ่าน", fail: "ไม่ผ่าน", na: "ไม่เกี่ยวข้อง" };
 
@@ -226,6 +227,23 @@ function Body({ ins }: { ins: OpsInspection }) {
                               </span>
                             ))}
                           </span>
+                        )}
+                        {!locked && (
+                          <InspectItemAssist
+                            text={it.text}
+                            standard={it.standard}
+                            phase={ins.phase}
+                            location={ins.location}
+                            note={st.note}
+                            media={st.media ?? []}
+                            onUse={(a) =>
+                              setItem(it.id, {
+                                r: a.verdict === "unsure" ? st.r : a.verdict,
+                                note: a.comment ? (st.note?.trim() ? `${st.note.trim()}; AI: ${a.comment}` : `AI: ${a.comment}`) : st.note,
+                                severity: a.verdict === "fail" ? a.severity : st.severity,
+                              })
+                            }
+                          />
                         )}
                       </div>
                     )}

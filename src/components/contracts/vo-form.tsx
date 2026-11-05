@@ -10,6 +10,8 @@ import { fmt, r2 } from "@/lib/accounting/money";
 import { lineAmount, lineCost, nextVoNo, ORIGIN_LABEL, useAllProjects, voCol, voTotals, type VariationX, type VoLine, type VoOrigin } from "@/lib/contracts";
 import { useMe } from "@/lib/use-me";
 import { areaCls, Btn, COST_CODE_OPTIONS, I, IconBtn, Labeled, Modal, numInput } from "./bits";
+import { AiButton } from "@/components/ai-sales/bits";
+import { AiVoHelper } from "@/components/ai-sales/variation-helper";
 
 const blank = (): VoLine => ({ description: "", qty: 1, unit: "งาน", unitPrice: 0, unitCost: 0, costCode: "90" });
 
@@ -25,6 +27,7 @@ export function VoForm({ initial, projectId, onClose, onSaved }: { initial?: Var
   const [rfiId, setRfiId] = useState(initial?.rfiId ?? "");
   const [lines, setLines] = useState<VoLine[]>(initial?.lines.length ? initial.lines : [blank()]);
   const [attachments, setAttachments] = useState(initial?.attachments ?? []);
+  const [aiOpen, setAiOpen] = useState(false);
   const t = voTotals(lines);
   const err = !pid ? "เลือกโครงการ" : !title.trim() ? "กรอกชื่องานเปลี่ยนแปลง" : !lines.some((l) => l.description.trim() && l.qty) ? "เพิ่มรายการอย่างน้อย 1 รายการ" : "";
   const set = (i: number, patch: Partial<VoLine>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
@@ -77,6 +80,28 @@ export function VoForm({ initial, projectId, onClose, onSaved }: { initial?: Var
         </>
       }
     >
+      {aiOpen ? (
+        <AiVoHelper
+          project={projects.find((p) => p.id === pid)}
+          initialText={[title, reason].filter(Boolean).join(" · ")}
+          onClose={() => setAiOpen(false)}
+          onApply={(a) => {
+            const keep = lines.filter((l) => l.description.trim());
+            const add: VoLine[] = a.lines.map((l) => ({ ...l, costCode: l.costCode as CostCode }));
+            setLines(a.mode === "append" ? [...keep, ...add] : add);
+            if (!title.trim() && a.title) setTitle(a.title);
+            if (!reason.trim() && a.reason) setReason(a.reason);
+            setDays(String(a.days));
+            setAiOpen(false);
+          }}
+        />
+      ) : (
+        <div className="mb-3 flex justify-end">
+          <AiButton onClick={() => setAiOpen(true)} disabled={!pid}>
+            ให้ AI ช่วยตั้งราคา
+          </AiButton>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <Labeled label="โครงการ" className="sm:col-span-2">
           <select className={inputCls} value={pid} onChange={(e) => setPid(e.target.value)} disabled={!!initial && initial.status !== "draft" && initial.status !== "priced"}>

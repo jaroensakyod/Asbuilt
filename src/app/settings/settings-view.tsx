@@ -9,6 +9,7 @@ import { Btn, I } from "@/components/ops/bits";
 import { CompanyInfoCard } from "@/app/team/company-card";
 import { SampleDataCard } from "@/app/team/sample-data-card";
 import { AuditCard } from "./audit-card";
+import { AiCard } from "./ai-card";
 import { allCats, catMeta, NOTIFY_DEFAULTS, saveNotifySettings, useNotifySettings, type NoteCat, type NotifySettings } from "@/lib/notifications";
 import { canView, type ModuleKey } from "@/lib/permissions";
 import { useMe } from "@/lib/use-me";
@@ -16,6 +17,7 @@ import { useMe } from "@/lib/use-me";
 const SECTIONS = [
   { id: "company", label: "ข้อมูลบริษัท" },
   { id: "notify", label: "การแจ้งเตือน" },
+  { id: "ai", label: "ผู้ช่วย AI" },
   { id: "modules", label: "ตั้งค่าแต่ละระบบ" },
   { id: "audit", label: "ประวัติการแก้ไข" },
   { id: "data", label: "ข้อมูลตัวอย่าง" },
@@ -168,6 +170,9 @@ export function SettingsView() {
           </section>
           <section id="notify" className="scroll-mt-20">
             <NotifyCard />
+          </section>
+          <section id="ai" className="scroll-mt-20">
+            <AiCard />
           </section>
           <section id="modules" className="scroll-mt-20">
             <Card>

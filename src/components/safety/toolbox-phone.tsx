@@ -17,6 +17,13 @@ import { toolboxTalks } from "@/lib/safety/store";
 import { talkHeadcount, TOPIC_CAT_LABEL, TOPICS, type Attendee, type TopicCat, type ToolboxTalk } from "@/lib/safety/types";
 import { useMe } from "@/lib/use-me";
 import { PhoneBtn, PhoneCard, PhoneLabel, PhoneShell, PhoneSiteSelect, phoneInput, useRememberedSite } from "./phone-bits";
+import { AiPill } from "@/components/ai-field/ai-bits";
+import { HazardAssist, TopicAssist } from "@/components/ai-field/hazard-assist";
+import { actionsText, applyHazards, followUpDays } from "@/lib/ai-field/safety";
+import { addDaysIso } from "@/lib/ai-field/common";
+import { canEdit } from "@/lib/permissions";
+import { safetyInspections } from "@/lib/safety/store";
+import { INSP_ITEMS, type ItemResult } from "@/lib/safety/types";
 
 const CUSTOM = "__custom";
 const DURATIONS = [10, 15, 20, 30];
@@ -97,6 +104,11 @@ function TalkForm({ site, onSaved }: { site: string; onSaved: (t: ToolboxTalk) =
   const [duration, setDuration] = useState(15);
   const [photos, setPhotos] = useState<MediaRef[]>([]);
   const [sig, setSig] = useState<{ ref: MediaRef; signer: string } | null>(null);
+  const [notes, setNotes] = useState("");
+  const [aiTopic, setAiTopic] = useState(false);
+  const [sitePhotos, setSitePhotos] = useState<MediaRef[]>([]);
+  const [walkId, setWalkId] = useState("");
+  const mayInspect = canEdit(me.role, "safety");
 
   const attendees: Attendee[] = onSite.filter((w) => !unticked.includes(w.id)).map((w) => ({ employeeId: w.id, name: w.name, group: "คนงานบริษัท" }));
   const total = attendees.length + crewCount;
@@ -116,6 +128,7 @@ function TalkForm({ site, onSaved }: { site: string; onSaved: (t: ToolboxTalk) =
       attendees,
       crews: crewCount > 0 ? [{ name: "ผู้รับเหมาช่วง", count: crewCount }] : [],
       durationMin: duration,
+      notes: notes.trim() || undefined,
       photos,
       signature: sig?.ref,
       signer: sig?.signer || undefined,
@@ -131,6 +144,19 @@ function TalkForm({ site, onSaved }: { site: string; onSaved: (t: ToolboxTalk) =
     <>
       <PhoneCard>
         <div className="flex flex-col gap-3">
+          <TopicAssist
+            phone
+            site={site}
+            onPick={(t) => {
+              if (t.topicId) setTopicId(t.topicId);
+              else {
+                setTopicId(CUSTOM);
+                setCustom(t.title);
+              }
+              if (t.points.length) setNotes(t.points.map((x) => `- ${x}`).join("\n"));
+              setAiTopic(true);
+            }}
+          />
           <PhoneLabel label="หัวข้อ">
             <select className={phoneInput} value={topicId} onChange={(e) => setTopicId(e.target.value)}>
               {cats.map((c) => (
@@ -146,6 +172,10 @@ function TalkForm({ site, onSaved }: { site: string; onSaved: (t: ToolboxTalk) =
             </select>
           </PhoneLabel>
           {topicId === CUSTOM && <input className={phoneInput} placeholder="หัวข้อที่พูดคุย" value={custom} onChange={(e) => setCustom(e.target.value)} />}
+          <label className="flex flex-col gap-1.5 text-[14px] text-ink-2">
+            <span className="flex items-center gap-2">ประเด็นที่พูด/ข้อสั่งการ {aiTopic && <AiPill />}</span>
+            <textarea className="min-h-[88px] w-full rounded-[12px] border border-line-strong bg-card px-3 py-2.5 text-[16px] text-ink outline-none placeholder:text-ink-3 focus:border-ink-3" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ไม่บังคับ" />
+          </label>
           <PhoneLabel label="ผู้บรรยาย">
             <input className={phoneInput} placeholder={me.name} value={presenter} onChange={(e) => setPresenter(e.target.value)} />
           </PhoneLabel>
@@ -201,6 +231,62 @@ function TalkForm({ site, onSaved }: { site: string; onSaved: (t: ToolboxTalk) =
 
       <PhoneCard>
         <MediaField value={photos} onChange={setPhotos} label="รูปการประชุม" photosOnly />
+      </PhoneCard>
+
+      <PhoneCard>
+        <h2 className="mb-1 text-[16px] font-medium">ตรวจความเสี่ยงจากรูปหน้างาน</h2>
+        <p className="mb-3 text-[13px] text-ink-3">ถ่ายรูปจุดทำงาน ให้ AI ชี้จุดเสี่ยง แล้วใช้เป็นหัวข้อพูดวันนี้{mayInspect ? " หรือบันทึกเป็นผลเดินตรวจ" : ""}</p>
+        <div className="flex flex-col gap-3">
+          <MediaField value={sitePhotos} onChange={setSitePhotos} label="รูปหน้างาน" photosOnly geotag />
+          <HazardAssist
+            phone
+            photos={sitePhotos}
+            checklist={INSP_ITEMS.walk}
+            applyLabel="ใช้เป็นหัวข้อ Toolbox วันนี้"
+            onApply={(h) => {
+              setTopicId(CUSTOM);
+              setCustom(`ความเสี่ยงที่พบหน้างาน: ${h[0].hazard}`);
+              setNotes(actionsText(h));
+              setAiTopic(true);
+            }}
+            extra={(h) =>
+              mayInspect && (
+                <button
+                  type="button"
+                  disabled={!h.length || !!walkId}
+                  onClick={() => {
+                    const base = INSP_ITEMS.walk.map((text) => ({ text, result: "na" as ItemResult, note: "" }));
+                    const r = applyHazards(base, h);
+                    const id = safetyInspections.nextId(`SIN-${TODAY.slice(0, 4)}-`);
+                    safetyInspections.upsert({
+                      id,
+                      projectId: site,
+                      kind: "walk",
+                      date: TODAY,
+                      inspector: me.name,
+                      location: "เดินตรวจจากแอปหน้างาน",
+                      items: r.items.map((i) => ({ text: i.text, result: i.result, note: i.note || undefined })),
+                      photos: sitePhotos,
+                      actions: r.actions,
+                      followUpDue: addDaysIso(TODAY, followUpDays(h)),
+                      closed: false,
+                    });
+                    setWalkId(id);
+                  }}
+                  className="h-12 rounded-[12px] border border-line-strong bg-card text-[15px] font-medium disabled:opacity-40"
+                >
+                  บันทึกเป็นผลเดินตรวจ
+                </button>
+              )
+            }
+          />
+          {walkId && (
+            <p className="flex items-center gap-2 text-[14px] text-pos">
+              <Check size={18} strokeWidth={1.5} />
+              บันทึกผลเดินตรวจ <Link href={`/safety?tab=inspections&q=${walkId}`} className="font-mono underline-offset-2 hover:underline">{walkId}</Link> แล้ว (ข้อที่ไม่ได้ตรวจเป็น ไม่เกี่ยวข้อง)
+            </p>
+          )}
+        </div>
       </PhoneCard>
 
       <PhoneCard>
