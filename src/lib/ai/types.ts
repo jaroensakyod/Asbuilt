@@ -29,6 +29,7 @@ export type AiMessage = {
 };
 
 export type AiTool = { name: string; description: string; parameters: JsonSchema };
+export type AiProvider = "gemini" | "claude";
 
 export type AiRequest = {
   /** short name of the feature, for logs/limits: "chat", "ocr-bill", "diary-draft" … */
@@ -38,8 +39,29 @@ export type AiRequest = {
   tools?: AiTool[];
   /** ask for JSON matching this schema (no tools in the same call) */
   json?: JsonSchema;
+  /** Gemini only (Claude Opus 5.5 rejects sampling parameters) */
   temperature?: number;
   maxOutputTokens?: number;
+  /** run on this provider instead of the server default (AI_PROVIDER) — used by the comparison page */
+  provider?: AiProvider;
+  /** calls that belong to one user action (a chat question with tool rounds) share a group id, for cost per action */
+  group?: string;
+};
+
+/** Tokens and cost of one call, as billed by the provider. */
+export type AiUsage = {
+  provider: AiProvider;
+  model: string; // model that actually answered
+  input: number; // uncached input tokens
+  output: number; // output tokens incl. thinking
+  thinking?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  costUsd: number;
+  costThb: number;
+  ms: number; // wall time of the provider call
+  priced: boolean; // false when the model is missing from the price table
+  note?: string;
 };
 
 export type AiResponse = {
@@ -48,8 +70,16 @@ export type AiResponse = {
   json?: unknown;
   /** model turn to append to history as { role: "model", parts, raw } */
   message: AiMessage;
-  usage?: { input?: number; output?: number };
+  usage?: AiUsage;
   model: string;
 };
 
-export type AiStatus = { configured: boolean; provider: string; model: string };
+export type AiProviderStatus = { configured: boolean; model: string; effort?: string };
+
+export type AiStatus = {
+  configured: boolean;
+  provider: AiProvider;
+  model: string;
+  providers?: Record<AiProvider, AiProviderStatus>;
+  usdThb?: number;
+};

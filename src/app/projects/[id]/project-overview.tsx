@@ -3,11 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Box, Download, FileText, Package, PencilRuler, Map as MapIcon, Phone, Plus, Trash2, Zap } from "lucide-react";
+import { ArrowRight, Box, Download, FileText, Package, PencilRuler, Map as MapIcon, Phone, Plus, Ruler, Trash2, Zap } from "lucide-react";
 import { Card, CardHead, cx, PlanBar, Status } from "@/components/ui";
 import { HouseThumb } from "@/components/house-thumb";
 import { HousePreview } from "@/components/viewer/house-preview";
 import { PortalLinkCard } from "@/components/portal/portal-link-card";
+import { ModelFilesCard } from "@/components/model3d/model-files-card";
 import { ProjectMessages } from "@/components/portal/project-messages";
 import { baht, phaseSegments, STATUS_TEXT, STATUS_TONE } from "@/components/dashboard/metrics";
 import { PhaseBar } from "@/components/dashboard/phase-bar";
@@ -128,6 +129,10 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
             <Link href={`/blueprint/${p.modelCode}`} className={btn}>
               <MapIcon size={16} strokeWidth={1.5} />
               แบบ 2D
+            </Link>
+            <Link href={`/takeoff/${encodeURIComponent(p.id)}`} className={btn}>
+              <Ruler size={16} strokeWidth={1.5} />
+              ถอดปริมาณ
             </Link>
             <Link href={`/cad/${p.modelCode}`} className={btn}>
               <PencilRuler size={16} strokeWidth={1.5} />
@@ -267,6 +272,8 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
                 <HousePreview code={p.modelCode} pins={openRep.map((r) => r.asset)} />
               </div>
             </Card>
+
+            <ModelFilesCard projectId={p.id} />
 
             <PortalLinkCard projectId={p.id} />
 

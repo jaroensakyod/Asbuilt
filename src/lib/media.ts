@@ -155,5 +155,18 @@ export function useMediaUrl(ref?: MediaRef) {
   return url;
 }
 
+/** Save a stored file to the user's computer under `name`. */
+export async function downloadMedia(ref: MediaRef, name = ref.name) {
+  const url = await mediaUrl(ref);
+  if (!url) throw new Error("ไม่พบไฟล์ในเครื่องนี้หรือในคลัง");
+  // a signed Storage URL is cross-origin, where the download attribute is ignored: fetch it first
+  const href = ref.path ? URL.createObjectURL(await (await fetch(url)).blob()) : url;
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.click();
+  if (href !== url) setTimeout(() => URL.revokeObjectURL(href), 60_000);
+}
+
 export const isImage = (ref: MediaRef) => ref.type.startsWith("image/");
 export const fileSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
