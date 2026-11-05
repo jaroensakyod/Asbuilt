@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 !.env.example
+/reports/
+
+# copied from node_modules/web-ifc by postinstall
+/public/wasm/

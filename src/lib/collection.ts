@@ -193,7 +193,7 @@ const actorName = () => {
 };
 const labelOf = (x: Record<string, unknown>) => String(x.title ?? x.name ?? x.subject ?? x.description ?? x.task ?? x.id).slice(0, 120);
 function audit(kind: string, action: AuditEntry["action"], rec: WithId) {
-  if (kind === AUDIT_KIND || kind === "ai_chats" || typeof window === "undefined") return;
+  if (kind === AUDIT_KIND || kind === "ai_chats" || kind === "ai_usage" || typeof window === "undefined") return;
   auditPending.push({
     id: `AUD-${Date.now().toString(36)}-${(auditSeq++).toString(36)}`,
     at: new Date().toISOString(),

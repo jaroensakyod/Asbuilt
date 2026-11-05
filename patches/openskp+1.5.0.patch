@@ -1,0 +1,150 @@
+diff --git a/node_modules/openskp/dist/index.js b/node_modules/openskp/dist/index.js
+index 421a644..40ecd05 100644
+--- a/node_modules/openskp/dist/index.js
++++ b/node_modules/openskp/dist/index.js
+@@ -3110,6 +3110,7 @@ function readAttrNamed(ar, r) {
+     if (t === 4) return r.i32();
+     if (t === 6) return r.f64();
+     if (t === 7) return r.u8();
++    if (t === 8) return Array.from(r.raw(4));
+     if (t === 9) return r.u32();
+     if (t === 10) return r.utf16();
+     if (t === 12) return r.f64();
+@@ -3155,6 +3156,38 @@ function extractLegacyDynamicProperties(attrs) {
+   }
+   return {};
+ }
++function readLineStyle(ar, r) {
++  r.raw(6);
++  const name = r.utf16();
++  const pattern = r.utf16();
++  r.f64s(3);
++  return { k: "linestyle", name, pattern };
++}
++// SketchUp 2019+ writes the layer's line style after the layer tail: a new CCustomLineStyle
++// (class def or class-ref) or a back-ref to one already read.
++function readLayerLineStyle(ar, r) {
++  if (r.pos + 2 > r.data.length) return;
++  const tag = r.data[r.pos] | r.data[r.pos + 1] << 8;
++  if (tag === 65535 && r.pos + 22 <= r.data.length && matchesAscii(r.data, r.pos + 6, "CCustomLineStyle")) {
++    ar.readObject(r, "CCustomLineStyle");
++    return;
++  }
++  const cs = ar.classSlot.get("CCustomLineStyle");
++  if (cs === void 0) return;
++  // a layer without a line style writes a null object ref (0x0000); only in files that use line styles
++  if (tag === 0) {
++    r.pos += 2;
++    return;
++  }
++  if (isClassRef(r.data, r.pos, cs)) {
++    ar.readObject(r, "CCustomLineStyle");
++    return;
++  }
++  if (tag && !(tag & 32768) && tag !== 32767) {
++    const e = ar.slots.get(tag);
++    if (e !== void 0 && e[0] === "obj" && e[1] === "CCustomLineStyle") r.pos += 2;
++  }
++}
+ function readLayer(ar, r) {
+   earlyPreamble(ar, r);
+   const name = r.utf16();
+@@ -3167,11 +3200,13 @@ function readLayer(ar, r) {
+   if (flags & 255) {
+     const tex = textureBlock(ar, r);
+     r.raw(4);
++    readLayerLineStyle(ar, r);
+     return { k: "layer", name, hidden: mid.length ? mid[0] : 0, rgba: tex.rgba };
+   }
+   const rgba = r.raw(4);
+   r.utf16();
+   r.raw(ar.ver < FIRST_V4 ? 17 : 21);
++  readLayerLineStyle(ar, r);
+   ar.skipClayerColourExt();
+   ar.skipClayerParentRef(ar.currentObjSlot);
+   return { k: "layer", name, hidden: mid.length ? mid[0] : 0, rgba: Array.from(rgba) };
+@@ -3690,7 +3725,8 @@ var READERS = {
+   CSectionPlane: readSectionPlane,
+   CSkFont: readSkFont,
+   CDimensionLinear: readDimLinear,
+-  CText: readText
++  CText: readText,
++  CCustomLineStyle: readLineStyle
+ };
+ function isLegacy(data) {
+   if (!(data.length >= 4 && data[0] === 255 && data[1] === 254 && data[2] === 255 && data[3] === 14)) {
+diff --git a/node_modules/openskp/dist/index.mjs b/node_modules/openskp/dist/index.mjs
+index 096cb88..6c201e1 100644
+--- a/node_modules/openskp/dist/index.mjs
++++ b/node_modules/openskp/dist/index.mjs
+@@ -3039,6 +3039,7 @@ function readAttrNamed(ar, r) {
+     if (t === 4) return r.i32();
+     if (t === 6) return r.f64();
+     if (t === 7) return r.u8();
++    if (t === 8) return Array.from(r.raw(4));
+     if (t === 9) return r.u32();
+     if (t === 10) return r.utf16();
+     if (t === 12) return r.f64();
+@@ -3084,6 +3085,38 @@ function extractLegacyDynamicProperties(attrs) {
+   }
+   return {};
+ }
++function readLineStyle(ar, r) {
++  r.raw(6);
++  const name = r.utf16();
++  const pattern = r.utf16();
++  r.f64s(3);
++  return { k: "linestyle", name, pattern };
++}
++// SketchUp 2019+ writes the layer's line style after the layer tail: a new CCustomLineStyle
++// (class def or class-ref) or a back-ref to one already read.
++function readLayerLineStyle(ar, r) {
++  if (r.pos + 2 > r.data.length) return;
++  const tag = r.data[r.pos] | r.data[r.pos + 1] << 8;
++  if (tag === 65535 && r.pos + 22 <= r.data.length && matchesAscii(r.data, r.pos + 6, "CCustomLineStyle")) {
++    ar.readObject(r, "CCustomLineStyle");
++    return;
++  }
++  const cs = ar.classSlot.get("CCustomLineStyle");
++  if (cs === void 0) return;
++  // a layer without a line style writes a null object ref (0x0000); only in files that use line styles
++  if (tag === 0) {
++    r.pos += 2;
++    return;
++  }
++  if (isClassRef(r.data, r.pos, cs)) {
++    ar.readObject(r, "CCustomLineStyle");
++    return;
++  }
++  if (tag && !(tag & 32768) && tag !== 32767) {
++    const e = ar.slots.get(tag);
++    if (e !== void 0 && e[0] === "obj" && e[1] === "CCustomLineStyle") r.pos += 2;
++  }
++}
+ function readLayer(ar, r) {
+   earlyPreamble(ar, r);
+   const name = r.utf16();
+@@ -3096,11 +3129,13 @@ function readLayer(ar, r) {
+   if (flags & 255) {
+     const tex = textureBlock(ar, r);
+     r.raw(4);
++    readLayerLineStyle(ar, r);
+     return { k: "layer", name, hidden: mid.length ? mid[0] : 0, rgba: tex.rgba };
+   }
+   const rgba = r.raw(4);
+   r.utf16();
+   r.raw(ar.ver < FIRST_V4 ? 17 : 21);
++  readLayerLineStyle(ar, r);
+   ar.skipClayerColourExt();
+   ar.skipClayerParentRef(ar.currentObjSlot);
+   return { k: "layer", name, hidden: mid.length ? mid[0] : 0, rgba: Array.from(rgba) };
+@@ -3619,7 +3654,8 @@ var READERS = {
+   CSectionPlane: readSectionPlane,
+   CSkFont: readSkFont,
+   CDimensionLinear: readDimLinear,
+-  CText: readText
++  CText: readText,
++  CCustomLineStyle: readLineStyle
+ };
+ function isLegacy(data) {
+   if (!(data.length >= 4 && data[0] === 255 && data[1] === 254 && data[2] === 255 && data[3] === 14)) {
