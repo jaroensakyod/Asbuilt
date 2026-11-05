@@ -343,6 +343,13 @@ export function EstimatingView() {
                       </Td>
                       <Td className="whitespace-nowrap text-[12px] text-ink-2">{thDate(e.date)}</Td>
                       <Td right>
+                        {e.lines[0]?.key.startsWith("TO-") && e.projectId ? (
+                          // estimates saved from the takeoff page go back there, not to a whole-house BOQ
+                          <Link href={`/takeoff/${encodeURIComponent(e.projectId)}`} className="inline-flex items-center gap-1 text-[13px] text-ink-2 hover:text-ink">
+                            <Calculator size={14} strokeWidth={1.5} />
+                            ถอดปริมาณ
+                          </Link>
+                        ) : (
                         <Link
                           href={`/estimating?model=${e.modelCode}&source=${e.choice}&oh=${e.overheadPct}&margin=${e.marginPct}&grade=${e.grade}${e.projectId ? `&project=${e.projectId}` : ""}${e.leadId ? `&lead=${e.leadId}` : ""}`}
                           onClick={() => {
@@ -360,6 +367,7 @@ export function EstimatingView() {
                           <Calculator size={14} strokeWidth={1.5} />
                           เปิด
                         </Link>
+                        )}
                       </Td>
                     </tr>
                   ))}

@@ -712,7 +712,7 @@ function AssetPanel({ code, set, onClose, onSheet }: { code: string; set: Return
             {a.pos[0].toFixed(2)}, {a.pos[2].toFixed(2)} · h {a.pos[1].toFixed(2)}
           </dd>
         </dl>
-        <Link href={`/repairs?new=${encodeURIComponent(a.code)}`} className="mt-4 flex h-9 items-center justify-center gap-2 rounded-[8px] bg-ink text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98]">
+        <Link href={`/repairs?new=${encodeURIComponent(a.code)}`} className="mt-4 flex h-9 items-center justify-center gap-2 rounded-[8px] bg-ink text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98]">
           <Wrench size={16} strokeWidth={1.5} /> แจ้งซ่อม
         </Link>
       </div>

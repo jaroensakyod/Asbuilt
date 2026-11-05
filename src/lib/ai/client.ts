@@ -8,8 +8,9 @@
 // so the AI only ever sees data the signed-in role is allowed to view.
 
 import { useEffect, useState } from "react";
-import type { AiFile, AiMessage, AiRequest, AiResponse, AiStatus, AiTool, JsonSchema } from "./types";
+import type { AiFile, AiMessage, AiProvider, AiRequest, AiResponse, AiStatus, AiTool, AiUsage, JsonSchema } from "./types";
 import { mediaUrl, type MediaRef } from "@/lib/media";
+import { logAiUsage } from "./usage-log";
 
 export type { AiMessage, AiTool, JsonSchema } from "./types";
 
@@ -24,6 +25,7 @@ export async function aiGenerate(req: AiRequest): Promise<AiResponse> {
   }
   const body = (await res.json().catch(() => ({}))) as AiResponse & { error?: string };
   if (!res.ok) throw res.status === 503 ? new AiUnavailable(body.error ?? "ยังไม่ได้ตั้งค่า AI") : new Error(body.error ?? `AI error ${res.status}`);
+  if (body.usage) logAiUsage(req.task, body.usage, req.group);
   return body;
 }
 
@@ -93,13 +95,18 @@ export async function runToolLoop(o: {
   tools: ClientTool[];
   maxSteps?: number;
   onStep?: (name: string, args: Record<string, unknown>) => void;
-}): Promise<{ text: string; added: AiMessage[] }> {
+  /** run on a specific provider (comparison page); default: the server's AI_PROVIDER */
+  provider?: AiProvider;
+}): Promise<{ text: string; added: AiMessage[]; usage: AiUsage[] }> {
   const added: AiMessage[] = [];
+  const usage: AiUsage[] = [];
+  const group = `G-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const decl = o.tools.map(({ name, description, parameters }) => ({ name, description, parameters }));
   for (let step = 0; step < (o.maxSteps ?? 6); step++) {
-    const r = await aiGenerate({ task: o.task, system: o.system, messages: [...o.messages, ...added], tools: decl });
+    const r = await aiGenerate({ task: o.task, system: o.system, messages: [...o.messages, ...added], tools: decl, provider: o.provider, group });
     added.push(r.message);
-    if (!r.calls?.length) return { text: r.text ?? "", added };
+    if (r.usage) usage.push(r.usage);
+    if (!r.calls?.length) return { text: r.text ?? "", added, usage };
     const results = await Promise.all(
       r.calls.map(async (c) => {
         o.onStep?.(c.name, c.args);
@@ -115,7 +122,7 @@ export async function runToolLoop(o: {
     );
     added.push({ role: "user", parts: results });
   }
-  return { text: "ขออภัย คำถามนี้ต้องค้นข้อมูลหลายขั้นเกินไป ลองถามให้แคบลง", added };
+  return { text: "ขออภัย คำถามนี้ต้องค้นข้อมูลหลายขั้นเกินไป ลองถามให้แคบลง", added, usage };
 }
 
 /** Keep tool results small: long arrays are cut, so one call can't blow the context. */

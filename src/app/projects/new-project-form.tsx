@@ -156,7 +156,7 @@ export function NewProjectForm({ onClose, onCreated, existingIds }: { onClose: (
             <button type="button" onClick={onClose} className="inline-flex h-9 items-center rounded-[8px] border border-line-strong bg-card px-4 text-[14px] font-medium hover:bg-raised">
               ยกเลิก
             </button>
-            <button type="submit" className="inline-flex h-9 items-center rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card hover:bg-[#3a332b]">
+            <button type="submit" className="inline-flex h-9 items-center rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card hover:bg-[#253d5c]">
               บันทึกโครงการ
             </button>
           </div>

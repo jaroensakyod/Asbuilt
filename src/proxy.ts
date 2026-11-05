@@ -36,6 +36,8 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// /api/skp is excluded: the proxy buffers request bodies only up to 10 MB (proxyClientMaxBodySize),
+// which truncates SketchUp uploads. That route checks the signed-in user itself.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\.(?:png|jpg|jpeg|svg|webp|ico|txt)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/skp|.*\.(?:png|jpg|jpeg|svg|webp|ico|txt|wasm)$).*)"],
 };

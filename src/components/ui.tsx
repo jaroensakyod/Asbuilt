@@ -24,7 +24,7 @@ export function AssetTag({ code, href }: { code: string; href?: string }) {
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <section className={cx("rounded-[14px] border border-line bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)]", className)}>
+    <section className={cx("app-card rounded-[16px] border border-line bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)]", className)}>
       {children}
     </section>
   );
@@ -47,7 +47,7 @@ export function PageHeader({ eyebrow, title, sub, actions }: { eyebrow?: string;
     <div className="flex flex-wrap items-end justify-between gap-4 pb-6">
       <div>
         {eyebrow && <p className="mb-1 text-[13px] text-ink-3">{eyebrow}</p>}
-        <h1 className="text-[30px] font-normal leading-[1.15]">{title}</h1>
+        <h1 className="text-[30px] font-semibold leading-[1.15]">{title}</h1>
         {sub && <p className="mt-2 max-w-[44rem] text-ink-2">{sub}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -57,8 +57,8 @@ export function PageHeader({ eyebrow, title, sub, actions }: { eyebrow?: string;
 
 export function Button({ children, primary, href }: { children: ReactNode; primary?: boolean; href?: string }) {
   const cls = cx(
-    "inline-flex h-9 items-center gap-2 rounded-[8px] px-4 text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]",
-    primary ? "bg-ink text-card hover:bg-[#3a332b]" : "border border-line-strong bg-card text-ink hover:bg-raised",
+    "inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] px-4 text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]",
+    primary ? "bg-accent text-white shadow-[0_3px_10px_#ed6a3526] hover:bg-[#d95726]" : "border border-line-strong bg-card text-ink hover:bg-raised",
   );
   return href ? (
     <Link href={href} className={cls}>
@@ -85,6 +85,7 @@ export function Stat({ label, value, unit, note }: { label: string; value: strin
 }
 
 type Tone = "neutral" | "accent" | "pos" | "neg" | "warn";
+const STATUS_STYLE: Record<Tone, string> = { neutral: "bg-raised text-ink-2", accent: "bg-accent-soft text-accent-text", pos: "bg-pos-soft text-pos", neg: "bg-neg-soft text-neg", warn: "bg-warn-soft text-warn" };
 const DOT: Record<Tone, string> = {
   neutral: "bg-ink-3",
   accent: "bg-accent",
@@ -99,7 +100,7 @@ export function Dot({ tone = "neutral" }: { tone?: Tone }) {
 
 export function Status({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] text-ink-2">
+    <span className={cx("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 whitespace-nowrap text-[12px] font-medium", STATUS_STYLE[tone])}>
       <Dot tone={tone} />
       {children}
     </span>

@@ -3,11 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Box, Download, FileText, Package, PencilRuler, Map as MapIcon, Phone, Plus, Trash2, Zap } from "lucide-react";
+import { ArrowRight, Box, Download, FileText, Package, PencilRuler, Map as MapIcon, Phone, Plus, Ruler, Trash2, Zap } from "lucide-react";
 import { Card, CardHead, cx, PlanBar, Status } from "@/components/ui";
 import { HouseThumb } from "@/components/house-thumb";
 import { HousePreview } from "@/components/viewer/house-preview";
 import { PortalLinkCard } from "@/components/portal/portal-link-card";
+import { ModelFilesCard } from "@/components/model3d/model-files-card";
+import { modelFiles, projectModels } from "@/lib/model3d/store";
 import { ProjectMessages } from "@/components/portal/project-messages";
 import { baht, phaseSegments, STATUS_TEXT, STATUS_TONE } from "@/components/dashboard/metrics";
 import { PhaseBar } from "@/components/dashboard/phase-bar";
@@ -69,6 +71,11 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
   }, [p]);
 
   const openRep = data.rep.filter((r) => r.status !== "closed");
+  // 3D files from the designer (SketchUp, IFC …): the newest one is shown at the top of the page
+  const allModels = modelFiles.use();
+  const uploads = useMemo(() => projectModels(allModels, p.id), [allModels, p.id]);
+  const latest = uploads[0];
+  const viewerHref = (id?: string) => `/model3d/${encodeURIComponent(p.id)}${id ? `?file=${encodeURIComponent(id)}` : ""}`;
   const segs = phaseSegments(p);
   const delta = Math.round((p.actual - p.plan) * 10) / 10;
   const left = daysBetween(TODAY, p.finish);
@@ -87,10 +94,18 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
     <>
       {/* header */}
       <div className="grid gap-6 pb-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="relative overflow-hidden rounded-[12px] border border-line">
-          <HouseThumb code={p.modelCode} className="block h-[150px] w-full" />
-          <span className="absolute bottom-2 left-2 rounded-[4px] bg-ink/80 px-1.5 font-mono text-[11px] leading-5 text-card">{p.modelCode}</span>
-        </div>
+        {latest?.thumb ? (
+          <Link href={viewerHref(latest.id)} className="group relative block overflow-hidden rounded-[12px] border border-line bg-white" title={`เปิด ${latest.name}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- small data URL saved with the file */}
+            <img src={latest.thumb} alt={latest.name} className="block h-[150px] w-full object-contain transition-transform duration-200 group-hover:scale-[1.03]" />
+            <span className="absolute bottom-2 left-2 rounded-[4px] bg-ink/80 px-1.5 text-[11px] leading-5 text-card">3D จากผู้ออกแบบ</span>
+          </Link>
+        ) : (
+          <div className="relative overflow-hidden rounded-[12px] border border-line">
+            <HouseThumb code={p.modelCode} className="block h-[150px] w-full" />
+            <span className="absolute bottom-2 left-2 rounded-[4px] bg-ink/80 px-1.5 font-mono text-[11px] leading-5 text-card">{p.modelCode}</span>
+          </div>
+        )}
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-[13px] text-ink-3">{p.id}</span>
@@ -121,13 +136,24 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
             <Info k="ที่ตั้ง" v={p.address || p.province} />
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">
+            {latest && (
+              <Link href={viewerHref(latest.id)} className={btn}>
+                <Box size={16} strokeWidth={1.5} />
+                ไฟล์ 3D
+                <span className="num rounded-[4px] bg-raised px-1 font-mono text-[12px] text-ink-2">{uploads.length}</span>
+              </Link>
+            )}
             <Link href={`/structure/${p.id}`} className={btn}>
               <Box size={16} strokeWidth={1.5} />
-              โมเดล 3D
+              {latest ? "โมเดลจากระบบ" : "โมเดล 3D"}
             </Link>
             <Link href={`/blueprint/${p.modelCode}`} className={btn}>
               <MapIcon size={16} strokeWidth={1.5} />
               แบบ 2D
+            </Link>
+            <Link href={`/takeoff/${encodeURIComponent(p.id)}`} className={btn}>
+              <Ruler size={16} strokeWidth={1.5} />
+              ถอดปริมาณ
             </Link>
             <Link href={`/cad/${p.modelCode}`} className={btn}>
               <PencilRuler size={16} strokeWidth={1.5} />
@@ -267,6 +293,8 @@ export function ProjectOverview({ project: p, local }: { project: Project; local
                 <HousePreview code={p.modelCode} pins={openRep.map((r) => r.asset)} />
               </div>
             </Card>
+
+            <ModelFilesCard projectId={p.id} />
 
             <PortalLinkCard projectId={p.id} />
 

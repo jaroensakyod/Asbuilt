@@ -90,7 +90,7 @@ export function Composer({
           onClick={() => void send()}
           disabled={!text.trim() || busy}
           aria-label="ส่งข้อความ"
-          className="inline-flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-ink text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98] disabled:opacity-40"
+          className="inline-flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-ink text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98] disabled:opacity-40"
         >
           <Send size={16} strokeWidth={1.5} />
         </button>

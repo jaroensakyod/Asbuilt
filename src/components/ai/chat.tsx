@@ -229,7 +229,7 @@ function Composer({ chat, disabled, autoFocus }: { chat: Chat; disabled?: boolea
             disabled={disabled || (!text.trim() && !files.length)}
             aria-label="ส่ง"
             title="ส่ง (Enter)"
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-ink text-card transition-opacity duration-150 hover:bg-[#3a332b] disabled:opacity-30"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-ink text-card transition-opacity duration-150 hover:bg-[#253d5c] disabled:opacity-30"
           >
             <ArrowUp {...I} />
           </button>

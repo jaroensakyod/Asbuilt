@@ -83,9 +83,9 @@ export function ModelCatalog() {
             const built = projects.filter((p) => p.modelCode === m.code).length;
             return (
               <Link key={m.code} href={`/models/${m.code}`} className="group">
-                <Card className="overflow-hidden transition-[border-color,transform] duration-150 group-hover:border-line-strong group-active:scale-[0.99]">
+                <Card className="overflow-hidden transition-[border-color,transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-line-strong group-active:scale-[0.99]">
                   <div className="border-b border-line bg-deep">
-                    <HouseThumb code={m.code} className="h-[160px] w-full" />
+                    <HouseThumb code={m.code} className="h-[210px] w-full" />
                   </div>
                   <div className="px-5 py-4">
                     <div className="flex items-baseline justify-between gap-3">

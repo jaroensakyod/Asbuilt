@@ -7,9 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "postinstall": "patch-package && node -e \"require('fs').mkdirSync('public/wasm',{recursive:true});require('fs').copyFileSync('node_modules/web-ifc/web-ifc.wasm','public/wasm/web-ifc.wasm')\"",
+    "test": "node --test --experimental-strip-types \"tests/**/*.test.ts\"",
+    "ai:bench": "node --conditions=react-server --experimental-strip-types --no-warnings scripts/ai-benchmark.mts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
     "@google/genai": "^2.32.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
@@ -18,10 +22,12 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^1.68.0",
     "next": "16.4.5",
+    "openskp": "1.5.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-leaflet": "^5.0.0",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "web-ifc": "0.0.78"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
@@ -32,6 +38,7 @@
     "@types/three": "^0.187.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "patch-package": "^8.0.1",
     "postgres": "^4.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"

@@ -15,3 +15,7 @@ import "@/lib/design";
 import "@/lib/interior";
 import "@/lib/field";
 import "@/lib/tender";
+// uploaded 3D files per project
+import "@/lib/model3d";
+// quantity takeoff settings per project
+import "@/lib/takeoff";

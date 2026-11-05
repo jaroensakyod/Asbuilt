@@ -1,30 +1,22 @@
 @import "tailwindcss";
 
-/*
-  Asbuilt design tokens
-  Direction (adapted from unslop by Damir Sokolovsky, @heydamir — CC BY 4.0):
-  - Product: one file per house, every system, from site to after-sales
-  - Character: exact, grounded, a little warm
-  - World: drafting paper, site concrete, survey marking paint
-  - Moments: the 3D house model and the plan-vs-actual progress list
-  - Signature: equipment asset tags (mono code on a riveted plate)
-*/
+/* Asbuilt: precise architecture, calm white surfaces, navy navigation and safety-orange actions. */
 
 :root {
-  --page: #f7f4ee;
-  --card: #fdfbf7;
-  --raised: #efe9df;
-  --deep: #ebe5da;
-  --line: rgb(31 27 22 / 0.08);
-  --line-strong: rgb(31 27 22 / 0.14);
-  --text: #1f1b16;
-  --text-2: #5e554a;
-  --text-3: #7b7266;
-  --accent: #c2410c;
-  --accent-text: #a3360a;
-  --accent-soft: #f6e3d6;
-  --pos: #2f7d4f;
-  --pos-soft: #e2efe4;
+  --page: #f4f6fa;
+  --card: #ffffff;
+  --raised: #edf1f7;
+  --deep: #e6ecf4;
+  --line: #e4e9f1;
+  --line-strong: #cdd6e3;
+  --text: #15253d;
+  --text-2: #52647c;
+  --text-3: #718198;
+  --accent: #ed6a35;
+  --accent-text: #bc4215;
+  --accent-soft: #fff0e8;
+  --pos: #13866c;
+  --pos-soft: #e5f5ef;
   --neg: #b42318;
   --neg-soft: #f7e1dd;
   --warn: #9a6a07;
@@ -113,3 +105,68 @@ body {
     background: #fff;
   }
 }
+
+/* Unified workspace surfaces */
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), summary { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+input, select, textarea { max-width: 100%; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #ed6a3526; border-color: var(--accent); }
+h1 { letter-spacing: -.035em; }
+h2 { letter-spacing: -.015em; }
+.app-card { box-shadow: 0 3px 16px #192e4c04; }
+.app-card > header { min-height: 58px; }
+.app-sidebar { background: #13243b; color: #eaf0f8; border-color: #21334b;
+ --text: #f1f5fb; --text-2: #c2cde0; --text-3: #8fa3be; --card: #203650;
+ --line: #ffffff12; --line-strong: #ffffff22; --raised: #29425e; --deep: #13243b; --accent-text: #ffae86;
+}
+.app-sidebar nav { scrollbar-width: thin; scrollbar-color: #3c506a transparent; }
+.app-sidebar .nav-active { background: #ed6a35; color: white; box-shadow: 0 4px 14px #00000015; }
+.app-sidebar .nav-active svg { color: white; }
+.app-topbar { background: #ffffffeb; height: 72px; }
+.app-page { padding-top: 30px; }
+.dashboard-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 30px; color: white; background: #172d47; margin-bottom: 24px; }
+.dashboard-hero::after { content: ''; position: absolute; inset: 0 0 0 42%; background: url('/architecture.svg') right center / cover no-repeat; opacity: .65; pointer-events: none; }
+.dashboard-hero > * { position: relative; z-index: 1; }
+.dashboard-hero h1 { font-weight: 500; }
+.dashboard-hero p { color: #c6d5e7; }
+.dashboard-hero a { white-space: nowrap; }
+.quick-links { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+.quick-link { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: white; transition: border-color .15s, transform .15s; }
+.quick-link:hover { border-color: var(--accent); transform: translateY(-2px); }
+.quick-link > svg:first-child { padding: 10px; width: 42px; height: 42px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); }
+.quick-link > svg:last-child { margin-left: auto; color: var(--text-3); width: 16px; }
+.quick-link small { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
+thead { background: #f7f9fc; }
+th { font-weight: 500; color: var(--text-2); }
+tbody tr { transition: background .15s; }
+tbody tr:hover { background: #f7f9fc; }
+@media (max-width: 767px) {
+ .app-sidebar { display: none; }
+ .app-sidebar.mobile-open { display: flex; position: fixed; inset: 0 auto 0 0; width: min(290px, 85vw); z-index: 60; }
+ .mobile-menu { display: inline-flex; }
+ .mobile-nav-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: #0f1e36a6; backdrop-filter: blur(3px); }
+ .app-topbar { padding-left: 16px; padding-right: 12px; height: 60px; }
+ .app-page { padding: 20px 14px; }
+ .dashboard-hero { padding: 22px; border-radius: 16px; }
+ .dashboard-hero::after { opacity: .25; left: 0; }
+ .dashboard-hero h1 { font-size: 26px; }
+ .quick-links { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ .quick-link { padding: 10px; gap: 8px; font-size: 12px; }
+ .quick-link > svg:first-child { width: 32px; height: 32px; padding: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+ *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+@media (min-width: 768px) { .mobile-menu, .mobile-nav-backdrop { display: none; } }
+.app-topbar button > span.flex-1 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+@media (max-width: 767px) {
+ .dashboard-hero > div:last-child { flex-wrap: wrap; }
+ .dashboard-hero > div:last-child > * { flex-shrink: 0; }
+ .app-card > header { flex-wrap: wrap; align-items: center; gap: 8px; }
+ .app-card > header > div { flex-wrap: wrap; gap: 6px; }
+}
+
+@media (max-width: 767px) { .sidebar-collapse { display: none; } }

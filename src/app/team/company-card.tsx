@@ -65,7 +65,7 @@ export function CompanyInfoCard() {
                   คืนค่าเดิม
                 </button>
               )}
-              <button type="submit" className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#3a332b]">
+              <button type="submit" className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-colors duration-150 hover:bg-[#253d5c]">
                 บันทึก
               </button>
             </div>

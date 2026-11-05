@@ -261,7 +261,7 @@ function PlanCard({ plan, current, currentRank, editable, onPick }: { plan: Plan
             disabled={!editable}
             className={cx(
               "h-9 w-full rounded-[8px] text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40",
-              up ? "bg-ink text-card hover:bg-[#3a332b]" : "border border-line-strong bg-card text-ink hover:bg-raised",
+              up ? "bg-ink text-card hover:bg-[#253d5c]" : "border border-line-strong bg-card text-ink hover:bg-raised",
             )}
           >
             {up ? `อัปเกรดเป็น ${plan.name}` : `ลดเป็น ${plan.name}`}
@@ -342,7 +342,7 @@ function ChangePanel({
             type="button"
             onClick={onConfirm}
             disabled={blocks.length > 0 || same}
-            className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#3a332b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-9 rounded-[8px] bg-ink px-4 text-[14px] font-medium text-card transition-[background-color,transform] duration-150 hover:bg-[#253d5c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             ยืนยันเปลี่ยนแพ็กเกจ
           </button>
