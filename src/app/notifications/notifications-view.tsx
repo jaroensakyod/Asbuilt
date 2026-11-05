@@ -6,7 +6,7 @@ import { CheckCheck, Circle, CircleCheck, Settings } from "lucide-react";
 import { Page } from "@/components/shell/topbar";
 import { Card, PageHeader, cx } from "@/components/ui";
 import { Btn, Empty, I, Pill, Segmented, StatCard, useHydrated } from "@/components/ops/bits";
-import { CAT_META, CATS, daysFrom, markRead, markUnread, useNotifications, useReadIds, type Note, type NoteCat, type NoteTone } from "@/lib/notifications";
+import { allCats, catMeta, daysFrom, markRead, markUnread, useNotifications, useReadIds, type Note, type NoteCat, type NoteTone } from "@/lib/notifications";
 
 const GROUPS: { tone: NoteTone[]; label: string }[] = [
   { tone: ["neg"], label: "ด่วน · เลยกำหนดแล้ว" },
@@ -45,7 +45,7 @@ export function NotificationsView() {
   const unread = all.filter((n) => !isRead(n)).length;
   const urgent = all.filter((n) => n.tone === "neg").length;
   const today = all.filter((n) => daysFrom(n.date) === 0).length;
-  const visibleCats = CATS.filter((c) => counts.has(c));
+  const visibleCats = allCats().filter((c) => counts.has(c));
 
   return (
     <Page trail={[{ label: "ผู้ดูแลระบบ" }, { label: "การแจ้งเตือน" }]}>
@@ -76,7 +76,7 @@ export function NotificationsView() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <Card className="h-fit p-1.5">
           <nav aria-label="หมวดการแจ้งเตือน" className="flex flex-col">
-            {[{ key: "all" as const, label: "ทั้งหมด", n: all.length, u: unread }, ...visibleCats.map((c) => ({ key: c, label: CAT_META[c].label, n: counts.get(c)!.all, u: counts.get(c)!.unread }))].map((c) => (
+            {[{ key: "all" as const, label: "ทั้งหมด", n: all.length, u: unread }, ...visibleCats.map((c) => ({ key: c, label: catMeta(c).label, n: counts.get(c)!.all, u: counts.get(c)!.unread }))].map((c) => (
               <button
                 key={c.key}
                 type="button"
@@ -104,7 +104,7 @@ export function NotificationsView() {
                 { key: "unread", label: `ยังไม่อ่าน ${unread}` },
               ]}
             />
-            {cat !== "all" && <p className="text-[13px] text-ink-3">{CAT_META[cat].hint}</p>}
+            {cat !== "all" && <p className="text-[13px] text-ink-3">{catMeta(cat).hint}</p>}
           </div>
 
           {hydrated && list.length === 0 && (
@@ -134,7 +134,7 @@ export function NotificationsView() {
                             <span className="block truncate text-[12px] text-ink-3">{n.sub}</span>
                           </Link>
                           <div className="flex shrink-0 items-center gap-3">
-                            <Pill>{CAT_META[n.cat].label}</Pill>
+                            <Pill>{catMeta(n.cat).label}</Pill>
                             <span className={cx("w-[72px] text-right font-mono text-[12px]", n.tone === "neg" ? "text-neg" : "text-ink-3")}>{when(n)}</span>
                             <button
                               type="button"

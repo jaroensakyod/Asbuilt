@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Banknote, Check, Download, FileText, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Banknote, Check, Coins, Download, FileText, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { Card, CardHead, cx, inputCls } from "@/components/ui";
 import { Btn, Empty, I, Pill, Segmented, Select, StatCard } from "@/components/ops/bits";
 import { thDate, TODAY } from "@/lib/data";
@@ -12,6 +12,10 @@ import { allRuns, attendance, employees, removeRun, saveRun, useHrSettings, useR
 import type { HrLine, HrRun } from "@/lib/hr/types";
 import { fmt, HrPrintStyle, periodLabel, siteName, useHrAccess } from "./bits";
 import { Payslip, type Ytd } from "./payslip";
+import { advances, pieceClaims, useLabourSettings } from "@/lib/hr/labour-store";
+import { applyAdvances, deductIssues } from "@/lib/hr/labour";
+import { daysInMonth } from "@/lib/hr/payroll";
+import { complianceIssues, IssueList } from "./crew-view";
 
 export const RUN_STATUS: Record<HrRun["status"], { label: string; tone: "neutral" | "warn" | "pos" | "accent" }> = {
   draft: { label: "ร่าง", tone: "warn" },
@@ -40,6 +44,8 @@ function Detail({ run, runs, onBack }: { run: HrRun; runs: HrRun[]; onBack: () =
   const { approve, edit, me } = useHrAccess();
   const emps = employees.use();
   const settings = useHrSettings();
+  const labour = useLabourSettings();
+  const sheets = attendance.use();
   const [mode, setMode] = useState<"lines" | "slips">("lines");
   const [size, setSize] = useState<"A4" | "A5">("A5");
   const [site, setSite] = useState("");
@@ -79,8 +85,10 @@ function Detail({ run, runs, onBack }: { run: HrRun; runs: HrRun[]; onBack: () =
         ? buildMonthlyRun(emps, run.period, run.payDate, settings.sso, {
             otHours: (e) => run.lines.find((l) => l.employeeId === e.id)?.otHours ?? 0,
             deduction: (e) => {
+              // keep manual deductions; scheduled advances are re-applied below
               const l = run.lines.find((x) => x.employeeId === e.id);
-              return l?.deduction ? { amount: l.deduction, note: l.deductionNote ?? "" } : undefined;
+              const other = (l?.deduction ?? 0) - (l?.advances ?? []).reduce((t, x) => t + x.amount, 0);
+              return l && other > 0 ? { amount: other, note: l.deductionNote ?? "" } : undefined;
             },
           })
         : buildDailyRun(emps, attendance.all(), {
@@ -92,8 +100,17 @@ function Detail({ run, runs, onBack }: { run: HrRun; runs: HrRun[]; onBack: () =
             sso: settings.sso,
             already: ssoAlreadyThisMonth(allRuns(), run.period, run.id),
           });
-    saveRun({ ...run, lines: fresh.lines, employerSso: fresh.employerSso });
+    saveRun({ ...run, lines: withAdvances(fresh.lines), employerSso: fresh.employerSso });
   };
+  const withAdvances = (lines: HrLine[]) => applyAdvances(lines, run.id, advances.all(), allRuns(), pieceClaims.all(), labour.maxDeductShare);
+  const deductAdvances = () => saveRun({ ...run, lines: withAdvances(run.lines) });
+  const winFrom = run.kind === "daily" ? (run.from ?? run.payDate) : `${run.period}-01`;
+  const winTo = run.kind === "daily" ? (run.to ?? run.payDate) : `${run.period}-${String(daysInMonth(run.period)).padStart(2, "0")}`;
+  const runIds = new Set(run.lines.map((l) => l.employeeId));
+  const issues = [
+    ...complianceIssues(emps, sheets.filter((sh) => !run.projectId || sh.projectId === run.projectId), winFrom, winTo, labour, runIds).filter((i) => run.kind === "daily" || i.kind !== "min_wage"),
+    ...deductIssues(run.lines, labour),
+  ];
   const csv = () => downloadText(`${run.id}-bank-transfer.csv`, bankCsv(run));
   const cash = cashLines(run);
   const slipLines = (site ? lines : run.lines).filter((l) => !only || l.employeeId === only);
@@ -119,6 +136,10 @@ function Detail({ run, runs, onBack }: { run: HrRun; runs: HrRun[]; onBack: () =
               <Btn small danger onClick={() => (removeRun(run.id), onBack())}>
                 <Trash2 {...I} />
                 ลบร่าง
+              </Btn>
+              <Btn small onClick={deductAdvances} title="หักเงินเบิกล่วงหน้าที่อนุมัติแล้วตามจำนวนงวด">
+                <Coins {...I} />
+                หักเงินเบิกตามตาราง
               </Btn>
               <Btn small onClick={rebuild} title="คำนวณใหม่จากข้อมูลพนักงานและลงเวลาล่าสุด">
                 <RefreshCw {...I} />
@@ -160,6 +181,19 @@ function Detail({ run, runs, onBack }: { run: HrRun; runs: HrRun[]; onBack: () =
         <StatCard label="จ่ายสุทธิ" value={fmt(t.net, 0)} unit="บาท" note={cash.length ? `เงินสด ${cash.length} คน` : "โอนทั้งหมด"} />
         <StatCard label="ต้นทุนนายจ้าง" value={fmt(t.gross + run.employerSso, 0)} unit="บาท" note="รายได้ + สมทบ" />
       </div>
+
+      <Card className="hr-noprint mt-4">
+        <CardHead
+          title="ตรวจสอบตามกฎหมายแรงงาน"
+          meta={issues.length ? `${issues.length} ประเด็น` : "ผ่าน"}
+          action={
+            <Link href="/hr/crew?tab=compliance" className="text-[13px] text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-ink">
+              ตั้งค่าขั้นต่ำ/OT
+            </Link>
+          }
+        />
+        <IssueList issues={issues} empty={run.kind === "daily" ? "ค่าแรงไม่ต่ำกว่าขั้นต่ำ OT ไม่เกินเพดาน รายการหักไม่เกินสัดส่วน" : "OT ไม่เกินเพดาน รายการหักไม่เกินสัดส่วน"} />
+      </Card>
 
       <div className="hr-noprint mt-4 flex flex-wrap items-center justify-between gap-3">
         <Segmented

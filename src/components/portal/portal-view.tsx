@@ -13,6 +13,8 @@ import { installments as installmentsCol, money, type Installment } from "@/lib/
 import { useRepairs } from "@/lib/ops-store";
 import { fetchPortal, PORTAL_LIVE, projectIdFromDemoToken, useDemoLinksOff, type PortalCompany, type PortalPayload } from "@/lib/portal";
 import { RepairReportForm } from "./repair-report-form";
+import { usePortalData } from "./portal-data";
+import { BoardsSection, DesignSection, MessagesSection, PortalTodo, ReceiptsSection, SelectionsSection, SurveySection, VariationsSection } from "./portal-extras";
 
 const CUSTOMER_DOCS: DocCategory[] = ["contract", "permit", "warranty", "manual"];
 const DOC_GROUP: Record<string, string> = { contract: "สัญญา", permit: "ใบอนุญาต", warranty: "ใบรับประกัน", manual: "คู่มือ" };
@@ -88,14 +90,26 @@ function PortalBody({ token, loaded, onReported }: { token: string; loaded: Load
       </Shell>
     );
 
-  const { company, project, repairs, installments } = loaded.data;
+  return <LoadedPortal token={token} data={loaded.data} docs={loaded.docs} onReported={onReported} />;
+}
+
+function LoadedPortal({ token, data, docs, onReported }: { token: string; data: PortalPayload; docs: DocItem[] | null; onReported?: () => void }) {
+  const { company, project, repairs, installments } = data;
+  const api = usePortalData(project.id, PORTAL_LIVE ? { token, records: data.records ?? [], reload: () => onReported?.() } : undefined);
   return (
     <Shell company={company}>
       <div className="flex flex-col gap-4 pb-12">
         <Hero project={project} />
+        <PortalTodo api={api} />
         <Progress project={project} />
+        <DesignSection api={api} project={project} />
+        <VariationsSection api={api} project={project} />
+        <SelectionsSection api={api} project={project} />
+        <BoardsSection api={api} />
         <Payments list={installments} />
-        <Documents docs={loaded.docs} project={project} company={company} />
+        <ReceiptsSection list={installments} project={project} company={company} />
+        <Documents docs={docs} project={project} company={company} />
+        <MessagesSection api={api} project={project} />
         <Repairs list={repairs} />
         <Card>
           <CardHead title="แจ้งซ่อม" meta={project.status === "delivered" ? "ในระยะประกัน" : undefined} />
@@ -103,6 +117,7 @@ function PortalBody({ token, loaded, onReported }: { token: string; loaded: Load
             <RepairReportForm token={token} projectId={project.id} onDone={onReported} />
           </div>
         </Card>
+        <SurveySection api={api} project={project} repairs={repairs} />
         <ContactCard company={company} />
       </div>
     </Shell>

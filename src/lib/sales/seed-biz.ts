@@ -14,11 +14,14 @@ const OVERDUE = new Set(["HC-2026-02", "HC-2026-09"]);
 /** Delivered project where the customer still holds the 5 % retention */
 const HOLD_RETENTION = new Set(["HC-2025-02"]);
 
+const MEASURED = new Set(["HC-2025-03", "HC-2026-03", "HC-2024-05"]);
+
 function seedInstallments(): Installment[] {
   const out: Installment[] = [];
   const seq = { inv: 0, rcp: 0 };
   const list = [...projects].sort((a, b) => (a.contractDate ?? a.start).localeCompare(b.contractDate ?? b.start));
-  for (const p of list) out.push(...historyFor(p, { quoteId: linkedOf(p.id)?.quoteId, overdue: OVERDUE.has(p.id), holdRetention: HOLD_RETENTION.has(p.id), seq }));
+  // projects billed by measured progress (interim payment certificates, see lib/contracts) have no milestone installments
+  for (const p of list) if (!MEASURED.has(p.id)) out.push(...historyFor(p, { quoteId: linkedOf(p.id)?.quoteId, overdue: OVERDUE.has(p.id), holdRetention: HOLD_RETENTION.has(p.id), seq }));
   renumber(out, "invoiceNo", (i) => i.dueDate, "INV");
   renumber(out, "receiptNo", (i) => i.paidDate ?? i.dueDate, "RCP");
   return out;

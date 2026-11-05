@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, CloudRain, Plus, Save, X } from "lucide-react";
+import Link from "next/link";
+import { Check, ChevronLeft, ChevronRight, CloudRain, MapPin, Plus, Save, Smartphone, X } from "lucide-react";
 import { Card, CardHead, cx, Field, inputCls, PageHeader, Status } from "@/components/ui";
 import { areaCls, Btn, Empty, FilterField, I, IconBtn, Modal, Pill, Select, StatCard } from "@/components/ops/bits";
-import { thDate, TODAY } from "@/lib/data";
+import { getProject, thDate, TODAY } from "@/lib/data";
+import { fenceFor, verification } from "@/lib/hr/clock";
+import { clockSettings, useClockSettings } from "@/lib/hr/labour-store";
 import { DAY_VALUE, type DayMark } from "@/lib/hr/calc";
 import { addDays, employedOn, isWorkday, weekday } from "@/lib/hr/payroll";
 import { ACTIVE_SITES } from "@/lib/hr/seed";
@@ -87,6 +90,7 @@ function SiteAttendance() {
               </div>
             </FilterField>
           </div>
+          <GeofenceBar key={site} site={site} canKey={canKey} />
           <SheetEditor key={`${site}|${date}`} site={site} date={date} sheet={sheetOf(site, date)} emps={emps} canKey={canKey} by={me.name} />
         </Card>
         <WeekMatrix site={site} date={date} sheets={sheets} emps={emps} onPick={setDate} />
@@ -187,13 +191,14 @@ function SheetEditor({ site, date, sheet, emps, canKey, by }: { site: string; da
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] text-[13px]">
+        <table className="w-full min-w-[800px] text-[13px]">
           <thead>
             <tr className="border-y border-line text-left text-ink-3">
               <th className="px-5 py-2 font-normal">คนงาน</th>
               <th className="px-3 py-2 font-normal">ทักษะ</th>
               <th className="px-3 py-2 font-normal">สัญชาติ</th>
               <th className="px-3 py-2 font-normal">การมาทำงาน</th>
+              <th className="px-3 py-2 font-normal">ยืนยัน</th>
               <th className="px-5 py-2 text-right font-normal">OT (ชม.)</th>
             </tr>
           </thead>
@@ -224,6 +229,9 @@ function SheetEditor({ site, date, sheet, emps, canKey, by }: { site: string; da
                         </button>
                       ))}
                     </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <VerifyCell e={r} />
                   </td>
                   <td className="px-5 py-2 text-right">
                     <input
@@ -318,6 +326,58 @@ function WeekMatrix({ site, date, sheets, emps, onPick }: { site: string; date: 
       </div>
       <p className="border-t border-line px-5 py-2.5 text-[12px] text-ink-3">ช่องทึบ = มา · เหลือง = ครึ่งวัน · แดง = ขาด · ตัวเลขในช่อง = ชั่วโมง OT · ช่องเส้นประ = ยังไม่ลง/วันหยุด</p>
     </Card>
+  );
+}
+
+/** how an entry was recorded: phone GPS (inside / outside the fence), crew QR, or keyed in */
+function VerifyCell({ e }: { e: AttendanceEntry }) {
+  const v = verification(e);
+  return (
+    <span className="inline-flex flex-col gap-0.5">
+      {v === "gps" ? <Pill tone="pos">GPS</Pill> : v === "outside" ? <Pill tone="warn">นอกเขต{e.in?.dist !== undefined ? ` ${e.in.dist} ม.` : ""}</Pill> : v === "qr" ? <Pill tone="accent">QR</Pill> : <Pill>ป้อนเอง</Pill>}
+      {e.in && (
+        <span className="font-mono text-[11px] text-ink-3">
+          {e.in.at}–{e.out?.at ?? "…"}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** geofence radius of the phone time clock for one site */
+function GeofenceBar({ site, canKey }: { site: string; canKey: boolean }) {
+  const cs = useClockSettings();
+  const fence = fenceFor(site, getProject(site), cs);
+  const own = cs.sites.find((x) => x.projectId === site);
+  const [radius, setRadius] = useState(String(fence.radius));
+  const save = () => {
+    const r = Math.max(30, Math.round(Number(radius) || cs.defaultRadius));
+    const sites = [...cs.sites.filter((x) => x.projectId !== site), { ...(own ?? { projectId: site }), radius: r }];
+    clockSettings.upsert({ ...cs, sites });
+    setRadius(String(r));
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-2.5 text-[13px] text-ink-2">
+      <span className="inline-flex items-center gap-1.5">
+        <MapPin {...I} />
+        {fence.lat !== undefined ? <span className="font-mono text-[12px] text-ink-3">{fence.lat.toFixed(4)}, {fence.lng?.toFixed(4)}</span> : "หน้างานไม่มีพิกัด"}
+      </span>
+      <label className="inline-flex items-center gap-2">
+        รัศมีลงเวลา
+        <input type="number" min={30} step={10} disabled={!canKey} aria-label="รัศมีลงเวลา (เมตร)" value={radius} onChange={(e) => setRadius(e.target.value)} className={cx(inputCls, "h-8 w-20 text-right font-mono disabled:opacity-60")} />
+        ม.
+      </label>
+      {canKey && Number(radius) !== fence.radius && (
+        <Btn small onClick={save}>
+          บันทึกรัศมี
+        </Btn>
+      )}
+      <span className="text-[12px] text-ink-3">{own ? `ค่าเฉพาะหน้างาน (ค่าเริ่มต้น ${cs.defaultRadius} ม.)` : `ใช้ค่าเริ่มต้น ${cs.defaultRadius} ม.`}</span>
+      <Link href="/m/clock" className="ml-auto inline-flex items-center gap-1.5 text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-ink">
+        <Smartphone {...I} />
+        ลงเวลาด้วยมือถือ /m/clock
+      </Link>
+    </div>
   );
 }
 

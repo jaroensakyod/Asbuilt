@@ -9,8 +9,8 @@ import { COMPANY_INFO } from "@/lib/data";
 import type { SupplierBill } from "@/lib/biz";
 import { accountName, type Account } from "@/lib/accounting/coa";
 import { bahtText, fmt, r2, thDateFull, thDateSlash } from "@/lib/accounting/money";
-import { billTotal, collectedVat } from "@/lib/accounting/journal";
-import type { ApPayment, ArInvoice, ArReceipt, JournalLine, WhtCertificate } from "@/lib/accounting/types";
+import { billPayable, billTotal, collectedVat } from "@/lib/accounting/journal";
+import type { ApPayment, ArCredit, ArInvoice, ArReceipt, BillX, JournalLine, TaxMeta, WhtCertificate } from "@/lib/accounting/types";
 
 const COMPANY_BRANCH = "สำนักงานใหญ่";
 
@@ -131,11 +131,14 @@ export function InvoiceDoc({ inv, projectName }: { inv: ArInvoice; projectName: 
 }
 
 /** ใบเสร็จรับเงิน (/ใบกำกับภาษี when output VAT is due on payment) */
-export function ReceiptDoc({ rc, inv, projectName }: { rc: ArReceipt; inv: ArInvoice; projectName: string }) {
-  const isTax = inv.taxPoint === "receipt" && inv.vat > 0;
-  const base = r2(inv.amount - inv.retention);
-  const vat = isTax ? collectedVat(inv) : r2(inv.vat * (inv.amount ? base / inv.amount : 1));
+export function ReceiptDoc({ rc, inv, projectName, tax }: { rc: ArReceipt; inv: ArInvoice; projectName: string; tax?: TaxMeta }) {
   const total = r2(rc.received + rc.wht);
+  const release = inv.origin === "retention";
+  const isTax = inv.taxPoint === "receipt" && (tax ? tax.vat > 0 : inv.vat > 0);
+  // VAT of this receipt as posted (receipts in parts split the invoice pro rata); else derived from the invoice
+  const vat = tax ? tax.vat : release ? 0 : isTax ? collectedVat(inv) : r2(inv.vat * (inv.amount ? (inv.amount - inv.retention) / inv.amount : 1));
+  const base = r2(total - vat);
+  const partial = total < r2(inv.amount + inv.vat - inv.retention) - 0.005;
   return (
     <>
       <Letterhead
@@ -158,7 +161,7 @@ export function ReceiptDoc({ rc, inv, projectName }: { rc: ArReceipt; inv: ArInv
           <p className="font-mono text-ink-2">{inv.projectId}</p>
         </div>
       </div>
-      {itemTable([{ desc: `${inv.description}${inv.retention > 0 ? " (ส่วนที่ไม่รวมเงินประกันผลงาน)" : ""}`, amount: base }])}
+      {itemTable([{ desc: `${inv.description}${inv.retention > 0 ? " (ส่วนที่ไม่รวมเงินประกันผลงาน)" : ""}${partial ? " · รับชำระบางส่วน" : ""}`, amount: base }])}
       <Totals
         words={total}
         rows={[
@@ -177,9 +180,61 @@ export function ReceiptDoc({ rc, inv, projectName }: { rc: ArReceipt; inv: ArInv
   );
 }
 
+/** ใบลดหนี้ / ใบกำกับภาษี against an invoice (มาตรา 86/10): original value, correct value, difference and VAT */
+export function CreditNoteDoc({ cn, inv, projectName, credited }: { cn: ArCredit; inv: ArInvoice; projectName: string; credited: number }) {
+  const before = r2(inv.amount - (credited - cn.amount));
+  const after = r2(before - cn.amount);
+  const total = r2(cn.amount + cn.vat);
+  return (
+    <>
+      <Letterhead
+        title="ใบลดหนี้/ใบกำกับภาษี"
+        titleEn="CREDIT NOTE / TAX INVOICE"
+        no={cn.id}
+        meta={
+          <>
+            <p>วันที่ {thDateFull(cn.date)}</p>
+            <p>อ้างอิงใบกำกับภาษี/ใบแจ้งหนี้ {inv.id}</p>
+            <p>ลงวันที่ {thDateSlash(inv.date)}</p>
+            <p>ต้นฉบับ</p>
+          </>
+        }
+      />
+      <div className="mt-4 grid grid-cols-[1fr_220px] gap-4">
+        <Party label="ลูกค้า" name={inv.customerName} taxId={inv.customerTaxId} branch={inv.customerBranch} address={inv.customerAddress} />
+        <div className="rounded-[6px] border border-line-strong px-3 py-2 text-[13px]">
+          <p className="text-[12px] text-ink-3">โครงการ</p>
+          <p>{projectName}</p>
+          <p className="font-mono text-ink-2">{inv.projectId}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-[13px]">
+        <span className="text-ink-3">เหตุที่ลดหนี้ </span>
+        {cn.reason}
+      </p>
+      {itemTable([{ desc: `${inv.description}${cn.note ? ` · ${cn.note}` : ""}`, amount: cn.amount }])}
+      <Totals
+        words={total}
+        rows={[
+          ["มูลค่าสินค้า/บริการตามใบกำกับภาษีเดิม", before],
+          ["มูลค่าที่ถูกต้อง", after],
+          ["ผลต่าง", cn.amount],
+          ["ภาษีมูลค่าเพิ่ม 7%", cn.vat],
+          ["รวมลดหนี้", total, true],
+        ]}
+      />
+      <Signatures roles={[{ role: "ผู้รับเอกสาร" }, { role: "ผู้มีอำนาจลงนาม" }]} />
+    </>
+  );
+}
+
 /** ใบสำคัญจ่าย */
 export function VoucherDoc({ pay, bill, lines, accounts }: { pay: ApPayment; bill: SupplierBill; lines: JournalLine[]; accounts: Account[] }) {
   const total = billTotal(bill);
+  const retention = (bill as BillX).retention ?? 0;
+  const settle = r2(pay.paid + pay.wht);
+  const partial = settle < billPayable(bill) - 0.005;
+  const extra: [string, number, boolean?][] = [...(retention > 0 ? ([["หัก เงินประกันผลงาน", retention]] as [string, number][]) : []), ...(partial ? ([["ชำระครั้งนี้ (บางส่วน)", settle, true]] as [string, number, boolean][]) : [])];
   return (
     <>
       <Letterhead title="ใบสำคัญจ่าย" titleEn="PAYMENT VOUCHER" no={pay.id} meta={<p>วันที่ {thDateFull(pay.date)}</p>} />
@@ -199,6 +254,7 @@ export function VoucherDoc({ pay, bill, lines, accounts }: { pay: ApPayment; bil
           ["มูลค่าก่อนภาษี", bill.subtotal],
           ["ภาษีมูลค่าเพิ่ม", bill.vat],
           ["รวม", total, true],
+          ...extra,
           ["หัก ภาษี ณ ที่จ่าย " + (pay.whtRate ? `${pay.whtRate}%` : ""), pay.wht],
           ["จ่ายสุทธิ", pay.paid, true],
         ]}

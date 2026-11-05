@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Bell, ChevronDown, Search, LogOut, Settings, UserRound } from "lucide-react";
 import { cx, Keycap } from "@/components/ui";
 import { openSearch } from "./sidebar";
+import { SyncBadge } from "./pwa";
+import { useHydrated } from "@/components/ops/bits";
 import { useMe } from "@/lib/use-me";
 import { signOut, switchCompany } from "@/lib/workspace";
 import { setDemoRole } from "@/lib/use-me";
@@ -32,10 +34,12 @@ export function TopActions() {
   const read = useReadIds();
   const list = all.slice(0, 12);
   const me = useMe();
-  const unread = all.filter((n) => !read.includes(n.id)).length;
+  const hydrated = useHydrated();
+  const unread = hydrated ? all.filter((n) => !read.includes(n.id)).length : 0;
 
   return (
     <div className="flex items-center gap-2">
+      <SyncBadge />
       <button
         type="button"
         onClick={openSearch}

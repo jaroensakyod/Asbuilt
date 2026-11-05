@@ -9,7 +9,10 @@ import { thDate, TODAY } from "@/lib/data";
 import { ssoMonthlyMax, type SsoSettings } from "@/lib/hr/calc";
 import { addDays, buildDailyRun, buildMonthlyRun, monthlyRunId, prevPeriod, runTotals, ssoAlreadyThisMonth, weekday } from "@/lib/hr/payroll";
 import { ACTIVE_SITES } from "@/lib/hr/seed";
-import { allRuns, attendance, employees, saveHrSettings, saveRun, useHrSettings, useRuns } from "@/lib/hr/store";
+import { attendance, employees, saveHrSettings, saveRun, useHrSettings, useRuns } from "@/lib/hr/store";
+import { advances, pieceClaims, useLabourSettings } from "@/lib/hr/labour-store";
+import { applyAdvances } from "@/lib/hr/labour";
+import type { HrRun } from "@/lib/hr/types";
 import { fmt, HrTabs, periodLabel, SubTabs, useHrAccess } from "./bits";
 import { LabourView, Pnd1View, SsoReportView, Tawi50View } from "./hr-reports";
 import { RUN_STATUS, RunDetail, runTitle } from "./run-detail";
@@ -181,7 +184,13 @@ function NewMonthly({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   const [period, setPeriod] = useState(options.find((p) => !runs.some((r) => r.id === monthlyRunId(p))) ?? options[2]);
   const [payDate, setPayDate] = useState(`${period}-${String(settings.payDay).padStart(2, "0")}`);
   const exists = runs.some((r) => r.id === monthlyRunId(period));
-  const preview = useMemo(() => buildMonthlyRun(emps, period, payDate, settings.sso), [emps, period, payDate, settings.sso]);
+  const advs = advances.use();
+  const claims = pieceClaims.use();
+  const labour = useLabourSettings();
+  const preview = useMemo(() => {
+    const r = buildMonthlyRun(emps, period, payDate, settings.sso);
+    return { ...r, lines: applyAdvances(r.lines, r.id, advs, runs, claims, labour.maxDeductShare) };
+  }, [emps, period, payDate, settings.sso, advs, runs, claims, labour.maxDeductShare]);
   const t = runTotals(preview);
   const create = () => {
     saveRun({ ...preview, createdBy: "HR" });
@@ -228,6 +237,7 @@ function NewMonthly({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       ) : (
         <p className="mt-3 text-[13px] text-ink-2">
           {t.heads} คน · รายได้รวม <span className="num font-mono">{fmt(t.gross)}</span> · ประกันสังคม <span className="num font-mono">{fmt(t.sso, 0)}</span> · ภาษี <span className="num font-mono">{fmt(t.wht)}</span> บาท. ใส่ OT และรายการหักในร่างได้ก่อนส่งอนุมัติ
+          <AdvanceNote run={preview} />
         </p>
       )}
     </Modal>
@@ -264,10 +274,13 @@ function NewDaily({ onClose, onCreated }: { onClose: () => void; onCreated: (id:
     }
   };
 
-  const preview = useMemo(
-    () => buildDailyRun(emps, sheets, { from, to, payDate, cycle, projectId: site || undefined, sso: settings.sso, already: ssoAlreadyThisMonth(allRuns(), payDate.slice(0, 7)) }),
-    [emps, sheets, from, to, payDate, cycle, site, settings.sso],
-  );
+  const advs = advances.use();
+  const claims = pieceClaims.use();
+  const labour = useLabourSettings();
+  const preview = useMemo(() => {
+    const r = buildDailyRun(emps, sheets, { from, to, payDate, cycle, projectId: site || undefined, sso: settings.sso, already: ssoAlreadyThisMonth(runs, payDate.slice(0, 7)) });
+    return { ...r, lines: applyAdvances(r.lines, r.id, advs, runs, claims, labour.maxDeductShare) };
+  }, [emps, sheets, from, to, payDate, cycle, site, settings.sso, runs, advs, claims, labour.maxDeductShare]);
   const exists = runs.some((r) => r.id === preview.id);
   const overlap = runs.some((r) => r.kind === "daily" && r.from && r.to && r.from <= to && r.to >= from && (!r.projectId || !site || r.projectId === site));
   const t = runTotals(preview);
@@ -336,9 +349,21 @@ function NewDaily({ onClose, onCreated }: { onClose: () => void; onCreated: (id:
         {missingDays > 0 && <p className="text-warn">มี {missingDays} วันทำงานในช่วงนี้ที่ยังไม่มีใบลงเวลา คนงานในวันนั้นจะไม่ได้รับค่าแรงจนกว่าจะลงเวลาและคำนวณใหม่</p>}
         {exists && <p className="text-neg">มีรอบ {preview.id} อยู่แล้ว</p>}
         {!exists && overlap && <p className="text-warn">ช่วงวันที่ซ้อนกับรอบค่าแรงที่มีอยู่ ตรวจสอบเพื่อไม่ให้จ่ายซ้ำ</p>}
+        <AdvanceNote run={preview} />
         <p className="text-ink-3">ค่าแรง = วัน × อัตรา (ครึ่งวัน = 0.5) + OT ชั่วโมงละ อัตรา/8 × 1.5 · ประกันสังคมหักไม่เกินเพดานต่อเดือนรวมทุกรอบ · คนงานรายวันโดยปกติไม่หักภาษี</p>
       </div>
     </Modal>
+  );
+}
+
+/** "หักเงินเบิก n รายการ ฿x" for a run preview */
+function AdvanceNote({ run }: { run: HrRun }) {
+  const taken = run.lines.flatMap((l) => l.advances ?? []);
+  if (!taken.length) return null;
+  return (
+    <span className="mt-1 block text-ink-2">
+      หักเงินเบิกล่วงหน้าตามตาราง {taken.length} รายการ รวม <span className="num font-mono">{fmt(taken.reduce((s, x) => s + x.amount, 0))}</span> บาท
+    </span>
   );
 }
 

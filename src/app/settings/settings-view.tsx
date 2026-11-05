@@ -8,7 +8,8 @@ import { Card, CardHead, PageHeader, cx, inputCls } from "@/components/ui";
 import { Btn, I } from "@/components/ops/bits";
 import { CompanyInfoCard } from "@/app/team/company-card";
 import { SampleDataCard } from "@/app/team/sample-data-card";
-import { CAT_META, CATS, NOTIFY_DEFAULTS, saveNotifySettings, useNotifySettings, type NoteCat, type NotifySettings } from "@/lib/notifications";
+import { AuditCard } from "./audit-card";
+import { allCats, catMeta, NOTIFY_DEFAULTS, saveNotifySettings, useNotifySettings, type NoteCat, type NotifySettings } from "@/lib/notifications";
 import { canView, type ModuleKey } from "@/lib/permissions";
 import { useMe } from "@/lib/use-me";
 
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "company", label: "ข้อมูลบริษัท" },
   { id: "notify", label: "การแจ้งเตือน" },
   { id: "modules", label: "ตั้งค่าแต่ละระบบ" },
+  { id: "audit", label: "ประวัติการแก้ไข" },
   { id: "data", label: "ข้อมูลตัวอย่าง" },
 ];
 
@@ -61,13 +63,13 @@ function NotifyCard() {
         <div>
           <p className="pb-2 text-[13px] text-ink-3">หมวดที่แจ้งเตือน</p>
           <ul className="divide-y divide-line">
-            {CATS.map((c) => (
+            {allCats().map((c) => (
               <li key={c} className="flex items-center justify-between gap-4 py-2.5">
                 <span className="min-w-0">
-                  <span className="block text-[14px]">{CAT_META[c].label}</span>
-                  <span className="block text-[12px] text-ink-3">{CAT_META[c].hint}</span>
+                  <span className="block text-[14px]">{catMeta(c).label}</span>
+                  <span className="block text-[12px] text-ink-3">{catMeta(c).hint}</span>
                 </span>
-                <Toggle on={!s.off.includes(c)} onChange={() => toggleCat(c)} label={`แจ้งเตือน${CAT_META[c].label}`} />
+                <Toggle on={!s.off.includes(c)} onChange={() => toggleCat(c)} label={`แจ้งเตือน${catMeta(c).label}`} />
               </li>
             ))}
           </ul>
@@ -185,6 +187,9 @@ export function SettingsView() {
                 ))}
               </ul>
             </Card>
+          </section>
+          <section id="audit" className="scroll-mt-20">
+            <AuditCard />
           </section>
           <section id="data" className="scroll-mt-20">
             <SampleDataCard />

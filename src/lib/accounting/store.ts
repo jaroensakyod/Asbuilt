@@ -4,7 +4,10 @@
 
 import { useEffect, useMemo } from "react";
 import { createCollection } from "@/lib/collection";
-import { installments, payrollRuns, supplierBills } from "@/lib/biz";
+import { budgets, installments, paymentCerts, payrollRuns, supplierBills, type Installment } from "@/lib/biz";
+import { billableInstallments, contractBillingItems } from "@/lib/contracts/billing";
+import { contractTerms } from "@/lib/contracts/settings";
+import type { CertX } from "@/lib/contracts/types";
 import { projects as seedProjects, TODAY } from "@/lib/data";
 import { useLocalProjects } from "@/lib/projects-store";
 import { useMe } from "@/lib/use-me";
@@ -13,7 +16,7 @@ import { DEFAULT_ACCOUNTS, type Account } from "./coa";
 import { assignNumbers, buildBooks, closingEntry, type BooksInput } from "./journal";
 import { BOOKS_START, addMonths, periodOf } from "./money";
 import { SEED_ASSETS, SEED_EXPENSES, SEED_MANUAL } from "./seed";
-import type { ApPayment, ArDoc, BankMatch, BankStatement, Expense, FixedAsset, JvNumber, ManualJournal, PeriodLock, ProjectRef, TaxFiling, WhtCertificate } from "./types";
+import type { ApPayment, ArDoc, BankMatch, BillingItem, BankStatement, Expense, FixedAsset, JvNumber, ManualJournal, PeriodLock, ProjectRef, TaxFiling, WhtCertificate } from "./types";
 
 export const accountsCol = createCollection<Account>("accounts", DEFAULT_ACCOUNTS);
 export const manualCol = createCollection<ManualJournal>("journals_manual", SEED_MANUAL);
@@ -51,11 +54,15 @@ export function useBooks() {
   const filings = filingsCol.use();
   const locks = locksCol.use();
   const register = registerCol.use();
-  const inst = installments.use();
+  const salesInst = installments.use();
+  const certs = paymentCerts.use();
+  const terms = contractTerms.use();
+  const budgetList = budgets.use();
   const bills = supplierBills.use();
   const payroll = payrollRuns.use();
   const projects = useProjectRefs();
   const { edit } = useAccess();
+  const inst = useMemo(() => billingItemsOf(salesInst, terms, certs as CertX[], budgetList), [salesInst, terms, certs, budgetList]);
 
   const input: BooksInput = useMemo(
     () => ({ today: ACC_TODAY, accounts, projects, installments: inst, arDocs, bills, apPayments, payroll, expenses, assets, manual, filings, locks, register }),
@@ -72,6 +79,36 @@ export function useBooks() {
 
   const projectName = (id?: string) => (id ? (projects.find((p) => p.id === id)?.name ?? id) : "");
   return { input, books, ...books, accounts, projects, projectName, locks, register };
+}
+
+// ---------- billing items ----------
+
+/**
+ * What the AR engine bills: sales installments (milestone installments of projects billed by measured progress are
+ * replaced by their certificates) plus contract items — the advance, certified progress certificates, retention release.
+ */
+export function billingItemsOf(list: Installment[], terms: ReturnType<typeof contractTerms.all>, certs: CertX[], budgetList: ReturnType<typeof budgets.all>): BillingItem[] {
+  const value = (projectId: string) => budgetList.find((b) => b.projectId === projectId)?.contractValue ?? Math.round((seedProjects.find((p) => p.id === projectId)?.value ?? 0) * 1e6);
+  return [...billableInstallments(list, terms), ...contractBillingItems(terms, certs, value)];
+}
+
+/** Record that a billing item was settled (or partly settled) on its source record. */
+export function settleBillingItem(item: BillingItem, patch: { status?: Installment["status"]; receiptNo?: string; paidDate?: string; invoiceNo?: string }) {
+  const paid = patch.status === "paid";
+  if (item.origin === "ipc") {
+    const c = paymentCerts.get(item.id) as CertX | undefined;
+    if (c) paymentCerts.upsert({ ...c, invoiceNo: c.invoiceNo ?? patch.invoiceNo, ...(paid ? { status: "paid" as const, paidDate: patch.paidDate, receiptNo: patch.receiptNo } : {}) } as CertX);
+    return;
+  }
+  if (item.origin === "advance" || item.origin === "retention") {
+    const t = contractTerms.all().find((x) => x.projectId === item.projectId);
+    if (!t || !paid) return;
+    if (item.origin === "advance") contractTerms.upsert({ ...t, advancePaidDate: patch.paidDate });
+    else if (t.retentionRelease) contractTerms.upsert({ ...t, retentionRelease: { ...t.retentionRelease, paidDate: patch.paidDate } });
+    return;
+  }
+  // sales installments are passed through unchanged, so the item is the installment record itself
+  installments.upsert({ ...(item as Installment), ...patch });
 }
 
 // ---------- period lock ----------

@@ -63,6 +63,7 @@ export const A = {
   inventory: "1190",
   ap: "2111",
   advance: "2120",
+  deposit: "1160",
   whtPayable: "2132",
   ssoPayable: "2133",
   outputVat: "2135",

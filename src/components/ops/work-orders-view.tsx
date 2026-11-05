@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import Link from "next/link";
+import { CalendarRange, Plus, Search, X } from "lucide-react";
 import { AssetTag, Card, Field, cx, inputCls } from "@/components/ui";
 import { getProject, projects, SEVERITY_LABEL, thDate, TODAY, WO_STATUS_LABEL, type WorkOrderStatus } from "@/lib/data";
 import { createWorkOrderFromRepair, useRepairs, useWorkOrders, type OpsWorkOrder } from "@/lib/ops-store";
@@ -63,10 +64,16 @@ export function WorkOrdersView() {
           <h1 className="text-[30px] font-normal leading-[1.15]">ใบสั่งงาน</h1>
           <p className="mt-2 max-w-[44rem] text-ink-2">มอบหมายช่างจากเรื่องแจ้งซ่อม ติดตามสถานะ ชั่วโมงงาน อะไหล่ และพิมพ์ใบงานให้ลูกค้าเซ็นรับ</p>
         </div>
-        <Btn primary onClick={() => setCreateOpen(true)}>
-          <Plus {...I} />
-          สร้างใบสั่งงานจากแจ้งซ่อม
-        </Btn>
+        <div className="flex items-center gap-2">
+          <Link href="/dispatch" className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-line-strong bg-card px-4 text-[14px] font-medium hover:bg-raised">
+            <CalendarRange {...I} />
+            จัดคิวช่าง
+          </Link>
+          <Btn primary onClick={() => setCreateOpen(true)}>
+            <Plus {...I} />
+            สร้างใบสั่งงานจากแจ้งซ่อม
+          </Btn>
+        </div>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-4 xl:grid-cols-4">

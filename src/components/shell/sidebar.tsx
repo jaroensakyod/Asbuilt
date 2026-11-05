@@ -40,6 +40,32 @@ import {
   CreditCard,
   Bell,
   Settings,
+  ChartGantt,
+  FileDiff,
+  HardHat,
+  Forklift,
+  MessageCircleQuestion,
+  FileCheck,
+  FlaskConical,
+  Stamp,
+  FolderGit2,
+  UsersRound,
+  PackageCheck,
+  Sofa,
+  Palette,
+  NotebookPen,
+  Smartphone,
+  Route,
+  ShieldCheck,
+  Gavel,
+  Landmark,
+  Award,
+  Tent,
+  Coins,
+  Layers,
+  ScrollText,
+  Banknote,
+  ChevronDown,
 } from "lucide-react";
 import { cx, Keycap } from "@/components/ui";
 import { COMPANY_INFO } from "@/lib/data";
@@ -47,6 +73,7 @@ import { useRepairs } from "@/lib/ops-store";
 import { useNotifications, useReadIds } from "@/lib/notifications";
 import { useMe } from "@/lib/use-me";
 import { canView, moduleOfPath } from "@/lib/permissions";
+import { useHydrated } from "@/components/ops/bits";
 
 type Item = { href: string; label: string; icon: typeof LayoutGrid; count?: number; exact?: boolean };
 
@@ -61,20 +88,62 @@ export const NAV: { label: string; items: Item[] }[] = [
     ],
   },
   {
-    label: "การขาย",
+    label: "การขาย & ประมูล",
     items: [
       { href: "/sales", label: "ลูกค้า & ลีด", icon: Handshake },
       { href: "/quotes", label: "ใบเสนอราคา", icon: FileSignature },
       { href: "/estimating", label: "ประเมินราคา & BOQ", icon: Calculator },
       { href: "/prices", label: "ราคาวัสดุตลาด", icon: Tags },
+      { href: "/tenders", label: "ประมูลงาน & งานราชการ", icon: Landmark },
     ],
   },
   {
-    label: "ดูแบบ",
+    label: "แผนงาน & สัญญา",
     items: [
+      { href: "/schedule", label: "แผนงาน (Gantt)", icon: ChartGantt },
+      { href: "/contracts", label: "สัญญา & เบิกงวด", icon: ScrollText },
+      { href: "/contracts/variations", label: "งานเปลี่ยนแปลง", icon: FileDiff },
+      { href: "/subcontractors", label: "ผู้รับเหมาช่วง", icon: UsersRound },
+      { href: "/cashflow", label: "กระแสเงินสดโครงการ", icon: Banknote },
+    ],
+  },
+  {
+    label: "หน้างาน",
+    items: [
+      { href: "/diary", label: "รายงานประจำวัน", icon: NotebookPen },
+      { href: "/safety", label: "ความปลอดภัย", icon: HardHat },
+      { href: "/plant", label: "เครื่องจักร", icon: Forklift },
+      { href: "/m", label: "แอปหน้างาน (มือถือ)", icon: Smartphone },
+    ],
+  },
+  {
+    label: "ออกแบบ",
+    items: [
+      { href: "/design-stages", label: "ขั้นตอนออกแบบ", icon: Layers },
+      { href: "/permits", label: "ขออนุญาตก่อสร้าง", icon: Stamp },
+      { href: "/specs", label: "รายการประกอบแบบ", icon: FileCheck },
       { href: "/structure", label: "Structure 3D", icon: Box },
       { href: "/blueprint", label: "Blueprint", icon: MapIcon },
       { href: "/cad", label: "CAD Viewer", icon: PencilRuler },
+    ],
+  },
+  {
+    label: "วิศวกรรม & คุณภาพ",
+    items: [
+      { href: "/rfi", label: "RFI (ถาม-ตอบแบบ)", icon: MessageCircleQuestion },
+      { href: "/submittals", label: "ส่งอนุมัติวัสดุ", icon: PackageCheck },
+      { href: "/quality", label: "คุณภาพ & ผลทดสอบ", icon: FlaskConical },
+      { href: "/supervision", label: "ควบคุมงาน & ใบอนุญาต", icon: ShieldCheck },
+      { href: "/doc-control", label: "ทะเบียนแบบ & เอกสาร", icon: FolderGit2 },
+      { href: "/meetings", label: "ประชุม", icon: Users },
+      { href: "/closeout", label: "ส่งมอบงาน", icon: Award },
+    ],
+  },
+  {
+    label: "ตกแต่งภายใน",
+    items: [
+      { href: "/interior", label: "งานตกแต่งภายใน", icon: Sofa },
+      { href: "/selections", label: "ลูกค้าเลือกวัสดุ", icon: Palette },
     ],
   },
   {
@@ -87,12 +156,15 @@ export const NAV: { label: string; items: Item[] }[] = [
     ],
   },
   {
-    label: "งานปฏิบัติการ",
+    label: "งานปฏิบัติการ & บริการ",
     items: [
       { href: "/inspections", label: "การตรวจสอบ", icon: ClipboardCheck },
       { href: "/repairs", label: "แจ้งซ่อม/ปัญหา", icon: TriangleAlert },
       { href: "/work-orders", label: "ใบสั่งงาน", icon: FileCheck2 },
+      { href: "/dispatch", label: "กระดานจ่ายงานช่าง", icon: Route },
       { href: "/maintenance", label: "บำรุงรักษา", icon: CalendarClock },
+      { href: "/service-contracts", label: "สัญญาบริการ", icon: Gavel },
+      { href: "/warranty", label: "ทะเบียนประกัน", icon: ShieldCheck },
     ],
   },
   {
@@ -111,6 +183,9 @@ export const NAV: { label: string; items: Item[] }[] = [
       { href: "/hr", label: "พนักงาน", icon: IdCard },
       { href: "/hr/attendance", label: "ลงเวลา & การลา", icon: CalendarClock },
       { href: "/hr/payroll", label: "เงินเดือน & ค่าแรง", icon: Wallet },
+      { href: "/hr/crew", label: "ค่าแรงเหมา & เบิกล่วงหน้า", icon: Coins },
+      { href: "/hr/skills", label: "ทักษะ & ใบรับรอง", icon: Award },
+      { href: "/hr/camps", label: "แคมป์คนงาน", icon: Tent },
     ],
   },
   {
@@ -142,7 +217,9 @@ export function Sidebar() {
   const notes = useNotifications();
   const readIds = useReadIds();
   const unreadNotes = notes.filter((n) => !readIds.includes(n.id)).length;
-  const countOf = (it: Item) => (it.href === "/repairs" ? openRepairs : it.href === "/notifications" ? unreadNotes : it.count);
+  // counts depend on browser-only state (localStorage read marks, local edits): show them after hydration
+  const hydrated = useHydrated();
+  const countOf = (it: Item) => (!hydrated ? undefined : it.href === "/repairs" ? openRepairs : it.href === "/notifications" ? unreadNotes : it.count);
   const me = useMe();
 
   useEffect(() => {
@@ -152,6 +229,23 @@ export function Sidebar() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(wide ? true : saved === "1");
   }, [path]);
+
+  // groups folded by the user (expanded automatically when they contain the current page)
+  const [folded, setFolded] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFolded(JSON.parse(window.localStorage.getItem("asbuilt:navFolded") ?? "[]") as string[]);
+    } catch {
+      // ignore
+    }
+  }, []);
+  const fold = (label: string) =>
+    setFolded((f) => {
+      const next = f.includes(label) ? f.filter((x) => x !== label) : [...f, label];
+      window.localStorage.setItem("asbuilt:navFolded", JSON.stringify(next));
+      return next;
+    });
 
   const toggle = () => {
     setCollapsed((v) => {
@@ -206,8 +300,20 @@ export function Sidebar() {
       <nav className={cx("flex-1 overflow-y-auto pb-4", collapsed ? "px-2" : "px-3")}>
         {NAV.map((g) => ({ ...g, items: g.items.filter((it) => { const m = moduleOfPath(it.href); return !m || canView(me.role, m); }) })).filter((g) => g.items.length).map((g) => (
           <div key={g.label} className="mt-4">
-            {collapsed ? <div className="mx-2 mb-2 h-px bg-line" /> : <p className="mb-1.5 px-2 text-[12px] text-ink-3">{g.label}</p>}
-            <ul className="flex flex-col gap-0.5">
+            {collapsed ? (
+              <div className="mx-2 mb-2 h-px bg-line" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => fold(g.label)}
+                aria-expanded={!folded.includes(g.label) || g.items.some(isActive)}
+                className="group/h mb-1.5 flex w-full items-center justify-between px-2 text-left text-[12px] text-ink-3 hover:text-ink-2"
+              >
+                {g.label}
+                <ChevronDown size={14} strokeWidth={1.5} className={cx("opacity-0 transition-[transform,opacity] duration-150 group-hover/h:opacity-100", folded.includes(g.label) && !g.items.some(isActive) && "-rotate-90 opacity-100")} />
+              </button>
+            )}
+            <ul className={cx("flex flex-col gap-0.5", !collapsed && folded.includes(g.label) && !g.items.some(isActive) && "hidden")}>
               {g.items.map((it) => {
                 const active = isActive(it);
                 const Icon = it.icon;

@@ -1,11 +1,13 @@
 // Record shapes of the accounting module. Pure types.
 // Shared biz shapes are imported type-only (erased at runtime, so node --test never loads biz.ts).
+import type { Installment, SupplierBill } from "../biz";
 import type { Line, PayStatus, VatMode } from "./tax";
 
 export type Source =
   | "opening"
   | "installment-invoice"
   | "receipt"
+  | "credit-note"
   | "supplier-bill"
   | "bill-payment"
   | "expense"
@@ -23,6 +25,7 @@ export const SOURCE_LABEL: Record<Source, string> = {
   opening: "ยอดยกมา",
   "installment-invoice": "ใบแจ้งหนี้/ใบกำกับภาษี",
   receipt: "รับชำระ",
+  "credit-note": "ใบลดหนี้",
   "supplier-bill": "ตั้งหนี้ผู้ขาย",
   "bill-payment": "จ่ายชำระหนี้",
   expense: "ค่าใช้จ่าย",
@@ -82,6 +85,12 @@ export type ArInvoice = {
   /** "receipt": construction is a service, so output VAT is due when paid (ภาษีขายยังไม่ถึงกำหนด until then). */
   taxPoint: "invoice" | "receipt";
   synthetic?: boolean; // reconstructed from an installment that was invoiced outside this module
+  /** what is billed: a sales installment (default), a progress certificate, the contract advance, or released retention */
+  origin?: BillingOrigin;
+  /** ipc: advance recovered on this certificate (excl. VAT) — revenue is amount + advanceRecovery, the advance liability 2120 is reduced */
+  advanceRecovery?: number;
+  /** retention release: output VAT deferred on the retained amounts, due when the release is received */
+  releaseVat?: number;
 };
 export type ArReceipt = {
   id: string; // RC-6911-0001
@@ -97,7 +106,51 @@ export type ArReceipt = {
   note?: string;
   synthetic?: boolean;
 };
-export type ArDoc = ArInvoice | ArReceipt;
+/** ใบลดหนี้ against an invoice / tax invoice (excl. VAT amount + VAT reversed) */
+export type ArCredit = {
+  id: string; // CN-6911-0001
+  kind: "credit";
+  installmentId: string;
+  projectId: string;
+  invoiceNo: string;
+  date: string;
+  reason: string;
+  amount: number; // excl. VAT
+  vat: number;
+  note?: string;
+};
+export type ArDoc = ArInvoice | ArReceipt | ArCredit;
+
+export type BillingOrigin = "installment" | "ipc" | "advance" | "retention";
+/**
+ * Anything billed to a customer that the AR engine turns into invoice / receipt entries:
+ * sales installments as they are, plus contract items (progress certificates, advance, retention release)
+ * shaped like an installment with a few optional extras.
+ */
+export type BillingItem = Installment & {
+  origin?: BillingOrigin;
+  invoiceDate?: string;
+  retention?: number;
+  advanceRecovery?: number;
+  releaseVat?: number;
+  /** tax the customer withholds on payment (used for the reconstructed receipt of a paid item) */
+  wht?: number;
+  customerName?: string;
+  customerTaxId?: string;
+  customerBranch?: string;
+  customerAddress?: string;
+};
+
+/** Supplier bill with the optional contract fields (subcontract certificates) */
+export type BillX = SupplierBill & {
+  /** retention we hold (excl. VAT): credited to 2150 instead of AP until released */
+  retention?: number;
+  /** advance paid earlier and recovered on this bill: cost is subtotal + advanceRecovery, 1160 is reduced */
+  advanceRecovery?: number;
+  /** advance payment to a subcontractor (debit 1160) or release of retention we held (debit 2150) */
+  billKind?: "advance" | "retention-release";
+  certId?: string;
+};
 
 export type ApPayment = {
   id: string; // PV-6911-0001

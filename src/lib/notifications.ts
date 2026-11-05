@@ -17,10 +17,13 @@ import { quotes, quoteTotals, validUntil } from "./sales/crm";
 import { employees, leaves } from "./hr/store";
 import { LEAVE_LABEL } from "./hr/types";
 
-export type NoteCat = "repairs" | "inspections" | "maintenance" | "warranty" | "purchasing" | "payables" | "receivables" | "sales" | "hr";
+export type CoreCat = "repairs" | "inspections" | "maintenance" | "warranty" | "purchasing" | "payables" | "receivables" | "sales" | "hr";
+/** core categories plus any registered by later modules (registerNotes) */
+export type NoteCat = string;
 export type NoteTone = "neg" | "warn" | "accent" | "neutral";
 
-export const CAT_META: Record<NoteCat, { label: string; module: ModuleKey; hint: string }> = {
+type CatMeta = { label: string; module: ModuleKey; hint: string };
+const CORE_META: Record<CoreCat, CatMeta> = {
   repairs: { label: "แจ้งซ่อม", module: "repairs", hint: "งานที่เกินหรือใกล้เกิน SLA" },
   inspections: { label: "การตรวจสอบ", module: "inspections", hint: "นัดตรวจวันนี้และพรุ่งนี้ ผลตรวจไม่ผ่าน" },
   maintenance: { label: "บำรุงรักษา", module: "maintenance", hint: "รอบบำรุงรักษาที่เลยหรือใกล้กำหนด" },
@@ -31,7 +34,24 @@ export const CAT_META: Record<NoteCat, { label: string; module: ModuleKey; hint:
   sales: { label: "การขาย", module: "sales", hint: "ใบเสนอราคาที่ใกล้หมดอายุ" },
   hr: { label: "บุคคล", module: "hr", hint: "ใบลารออนุมัติ ใบอนุญาตทำงานใกล้หมด" },
 };
-export const CATS = Object.keys(CAT_META) as NoteCat[];
+const CORE_CATS = Object.keys(CORE_META) as CoreCat[];
+
+// ---------- plug-in sources ----------
+// A module adds its own feed at import time (before first render, so hook order is stable):
+//   registerNotes({ cat: "rfi", label: "RFI", module: "engineering", hint: "RFI ที่ใกล้ครบกำหนดตอบ", use: useRfiNotes });
+// `use` is a React hook returning Note[] (already filtered to what matters); the user's
+// category switch and role permission are applied here.
+export type NoteSource = CatMeta & { cat: string; use: () => Note[] };
+const sources: NoteSource[] = [];
+export function registerNotes(src: NoteSource) {
+  if (!sources.some((x) => x.cat === src.cat) && !(src.cat in CORE_META)) sources.push(src);
+}
+export const allCats = (): NoteCat[] => [...CORE_CATS, ...sources.map((x) => x.cat)];
+export const catMeta = (c: NoteCat): CatMeta => (CORE_META as Record<string, CatMeta>)[c] ?? sources.find((x) => x.cat === c) ?? { label: c, module: "projects", hint: "" };
+/** @deprecated use allCats() / catMeta() */
+export const CAT_META = new Proxy({} as Record<NoteCat, CatMeta>, { get: (_t, k: string) => catMeta(k) });
+/** @deprecated use allCats() */
+export const CATS = CORE_CATS as NoteCat[];
 
 export type Note = {
   id: string;
@@ -96,7 +116,9 @@ const plusDays = (n: number) => new Date(Date.parse(TODAY) + n * DAY).toISOStrin
 const dueText = (d: number) => (d < 0 ? `เลยกำหนด ${-d} วัน` : d === 0 ? "ครบกำหนดวันนี้" : `อีก ${d} วัน`);
 const projName = (id?: string) => (id ? (getProject(id)?.name ?? id) : "คลังกลาง");
 
-/** Every notification the current user may see, newest-due first. */
+const RANK: Record<NoteTone, number> = { neg: 0, warn: 1, accent: 2, neutral: 3 };
+
+/** Every notification the current user may see, most urgent first. */
 export function useNotifications(): Note[] {
   const s = useNotifySettings();
   const me = useMe();
@@ -110,10 +132,12 @@ export function useNotifications(): Note[] {
   const qs = quotes.use();
   const emps = employees.use();
   const lvs = leaves.use();
+  // plug-in feeds (registration happens at import time, so this list is stable between renders)
+  const extra = sources.map((src) => ({ src, notes: src.use() }));
 
-  return useMemo(() => {
+  const core = useMemo(() => {
     const out: Note[] = [];
-    const on = (c: NoteCat) => !s.off.includes(c) && canView(me.role, CAT_META[c].module);
+    const on = (c: NoteCat) => !s.off.includes(c) && canView(me.role, catMeta(c).module);
 
     if (on("repairs"))
       for (const r of repairs) {
@@ -196,7 +220,11 @@ export function useNotifications(): Note[] {
       }
     }
 
-    const rank: Record<NoteTone, number> = { neg: 0, warn: 1, accent: 2, neutral: 3 };
-    return out.sort((a, b) => rank[a.tone] - rank[b.tone] || a.date.localeCompare(b.date));
+    return out;
   }, [s, me.role, repairs, inspections, maintenance, inst, bills, pos, prs, qs, emps, lvs]);
+
+  // merge plug-in feeds (cheap; their hooks memoise their own lists)
+  const out = [...core];
+  for (const { src, notes } of extra) if (!s.off.includes(src.cat) && canView(me.role, src.module)) for (const n of notes) out.push({ ...n, cat: src.cat });
+  return out.sort((a, b) => RANK[a.tone] - RANK[b.tone] || a.date.localeCompare(b.date));
 }

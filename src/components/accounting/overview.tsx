@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardHead, Dot, Stat } from "@/components/ui";
 import { addDays, addMonths, BOOKS_START, fmt, periodLabel, periodLabelFull, periodOf, periodsBetween } from "@/lib/accounting/money";
 import { A } from "@/lib/accounting/coa";
-import { invoiceOf, receiptOf, ssoDue, vatReturns, whtSummary } from "@/lib/accounting/journal";
+import { arStatus, billStatus, invoiceOf, ssoDue, vatReturns, whtSummary } from "@/lib/accounting/journal";
 import { normalBalance, plByMonth } from "@/lib/accounting/reports";
 import { ACC_TODAY, certsCol, filingsCol, useBooks } from "@/lib/accounting/store";
 import { Num, tableCls, td, tdR, th, thR } from "./bits";
@@ -38,11 +38,11 @@ export function AccountingOverview() {
     const toInvoice = input.installments.filter((i) => !invoiceOf(i, input.arDocs, input.projects) && i.dueDate <= addDays(ACC_TODAY, 7));
     if (toInvoice.length) out.push({ tone: "accent", text: `งวดเงินลูกค้า ${toInvoice.length} งวดถึงกำหนดภายใน 7 วันและยังไม่ออกใบแจ้งหนี้`, href: "/accounting/sales" });
     const overdue = input.installments.filter((i) => {
-      const inv = invoiceOf(i, input.arDocs, input.projects);
-      return inv && !receiptOf(i, input.arDocs, inv) && inv.dueDate < ACC_TODAY;
+      const st = arStatus(i, input.arDocs, input.projects);
+      return st && !st.paid && st.inv.dueDate < ACC_TODAY;
     });
     if (overdue.length) out.push({ tone: "warn", text: `ลูกหนี้เกินกำหนดชำระ ${overdue.length} รายการ`, href: "/accounting/sales" });
-    const billsDue = input.bills.filter((b) => b.status !== "paid" && b.dueDate <= addDays(ACC_TODAY, 7));
+    const billsDue = input.bills.filter((b) => !billStatus(b, input.apPayments).paid && b.dueDate <= addDays(ACC_TODAY, 7));
     if (billsDue.length) out.push({ tone: "accent", text: `ใบแจ้งหนี้ผู้ขาย ${billsDue.length} ใบถึงกำหนดจ่ายภายใน 7 วัน`, href: "/accounting/purchases" });
     // filings due for last month (ภ.ง.ด. by the 7th, ภ.พ.30 / ประกันสังคม by the 15th of the next month)
     const has = (kind: string) => filings.some((f) => f.kind === kind && f.period === prev);

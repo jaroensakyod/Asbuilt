@@ -5,13 +5,13 @@ import { Check, Printer, Wallet } from "lucide-react";
 import { Card, CardHead, inputCls } from "@/components/ui";
 import { supplierBills, type SupplierBill } from "@/lib/biz";
 import { A } from "@/lib/accounting/coa";
-import { billTotal, billWht, isServiceBill, paymentOf } from "@/lib/accounting/journal";
+import { billPayable, billStatus, billWht, isServiceBill } from "@/lib/accounting/journal";
 import { docPrefix, fmt, r2, thDateSlash } from "@/lib/accounting/money";
 import { aging, AGING_BUCKETS } from "@/lib/accounting/reports";
 import { whtForm } from "@/lib/accounting/tax";
 import { ACC_TODAY, apPaymentsCol, isLockedDate, LOCKED_MSG, useAccess, useBooks } from "@/lib/accounting/store";
-import type { ApPayment } from "@/lib/accounting/types";
-import { Btn, CsvButton, Empty, I, Labeled, Modal, Notice, Num, Pill, PrintSheet, tableCls, td, tdR, th, thR } from "./bits";
+import type { ApPayment, BillX } from "@/lib/accounting/types";
+import { Btn, CsvButton, Empty, I, Labeled, Modal, Notice, Num, numInput, Pill, PrintSheet, tableCls, td, tdR, th, thR } from "./bits";
 import { VoucherDoc } from "./docs";
 
 const STATUS: Record<SupplierBill["status"], { label: string; tone: "neutral" | "accent" | "pos" }> = {
@@ -28,18 +28,19 @@ export function PurchasesView() {
   const [voucher, setVoucher] = useState<{ bill: SupplierBill; pay: ApPayment } | null>(null);
 
   const bills = useMemo(() => [...input.bills].sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [input.bills]);
-  const unpaid = bills.filter((b) => b.status !== "paid");
-  const shown = filter === "all" ? bills : filter === "paid" ? bills.filter((b) => b.status === "paid").reverse() : unpaid;
-  const ag = useMemo(() => aging(unpaid, (b) => b.dueDate, billTotal, ACC_TODAY), [unpaid]);
+  const stOf = useMemo(() => new Map(bills.map((b) => [b.id, billStatus(b, input.apPayments)])), [bills, input.apPayments]);
+  const unpaid = useMemo(() => bills.filter((b) => !stOf.get(b.id)!.paid), [bills, stOf]);
+  const shown = filter === "all" ? bills : filter === "paid" ? bills.filter((b) => stOf.get(b.id)!.paid).reverse() : unpaid;
+  const ag = useMemo(() => aging(unpaid, (b) => b.dueDate, (b) => stOf.get(b.id)!.outstanding, ACC_TODAY), [unpaid, stOf]);
   const bySupplier = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const r of ag.rows) {
       const v = m.get(r.item.supplierName) ?? AGING_BUCKETS.map(() => 0);
-      v[r.bucket] = r2(v[r.bucket] + billTotal(r.item));
+      v[r.bucket] = r2(v[r.bucket] + stOf.get(r.item.id)!.outstanding);
       m.set(r.item.supplierName, v);
     }
     return [...m.entries()].sort((a, b) => b[1].reduce((s, x) => s + x, 0) - a[1].reduce((s, x) => s + x, 0));
-  }, [ag]);
+  }, [ag, stOf]);
 
   const voucherLines = voucher ? (entries.find((e) => e.key === `bill-payment:${voucher.pay.id}`)?.lines ?? []) : [];
 
@@ -76,13 +77,15 @@ export function PurchasesView() {
                   <th className={thR}>ก่อน VAT</th>
                   <th className={thR}>VAT</th>
                   <th className={thR}>หัก ณ ที่จ่าย</th>
+                  <th className={thR}>ชำระแล้ว / คงค้าง</th>
                   <th className={th}>สถานะ</th>
                   <th className={th} />
                 </tr>
               </thead>
               <tbody>
                 {shown.slice(0, 80).map((b) => {
-                  const p = paymentOf(b, input.apPayments);
+                  const st = stOf.get(b.id)!;
+                  const ret = (b as BillX).retention ?? 0;
                   return (
                     <tr key={b.id}>
                       <td className={td}>
@@ -119,8 +122,16 @@ export function PurchasesView() {
                           <span className="text-ink-3">–</span>
                         )}
                       </td>
+                      <td className={tdR}>
+                        <Num v={st.settled} acc />
+                        <span className="block text-[11px] text-ink-3">
+                          คงค้าง <Num v={st.outstanding} />
+                        </span>
+                        {ret > 0 && <span className="block text-[11px] text-ink-3">ประกันผลงาน {fmt(ret)}</span>}
+                      </td>
                       <td className={td}>
                         <Pill tone={STATUS[b.status].tone}>{STATUS[b.status].label}</Pill>
+                        {!st.paid && st.payments.length > 0 && <span className="mt-1 block text-[11px] text-ink-3">จ่ายบางส่วน {st.payments.length} ครั้ง</span>}
                       </td>
                       <td className={tdR}>
                         <div className="flex justify-end gap-1.5">
@@ -136,12 +147,12 @@ export function PurchasesView() {
                               จ่ายชำระ
                             </Btn>
                           )}
-                          {p && (
-                            <Btn small onClick={() => setVoucher({ bill: b, pay: p })}>
+                          {st.payments.map((p) => (
+                            <Btn key={p.id} small onClick={() => setVoucher({ bill: b, pay: p })}>
                               <Printer {...I} />
                               {p.synthetic ? "ใบสำคัญจ่าย" : p.id}
                             </Btn>
-                          )}
+                          ))}
                         </div>
                       </td>
                     </tr>
@@ -202,7 +213,7 @@ export function PurchasesView() {
         </div>
       </Card>
 
-      {pay && <PayBill bill={pay} onClose={() => setPay(null)} locks={locks} />}
+      {pay && <PayBill bill={pay} onClose={() => setPay(null)} locks={locks} pays={input.apPayments} />}
       <PrintSheet open={!!voucher} onClose={() => setVoucher(null)} title="ใบสำคัญจ่าย">
         {voucher && <VoucherDoc bill={voucher.bill} pay={voucher.pay} lines={voucherLines} accounts={accounts} />}
       </PrintSheet>
@@ -210,18 +221,26 @@ export function PurchasesView() {
   );
 }
 
-function PayBill({ bill, onClose, locks }: { bill: SupplierBill; onClose: () => void; locks: ReturnType<typeof useBooks>["locks"] }) {
+/** Pay all or part of a bill; withholding is on the pre-VAT share of what is paid now. */
+function PayBill({ bill, onClose, locks, pays }: { bill: SupplierBill; onClose: () => void; locks: ReturnType<typeof useBooks>["locks"]; pays: ApPayment[] }) {
+  const st = billStatus(bill, pays);
+  const owed = st.outstanding;
+  const payable = billPayable(bill) || 1;
   const [date, setDate] = useState(ACC_TODAY);
   const [account, setAccount] = useState<string>(A.bank);
   const [note, setNote] = useState("");
-  const wht = billWht(bill);
-  const paid = r2(billTotal(bill) - wht);
-  const err = isLockedDate(date, locks) ? LOCKED_MSG : date < bill.date ? "วันที่จ่ายก่อนวันที่ใบแจ้งหนี้" : "";
+  const [amountText, setAmountText] = useState(String(owed));
+  const settle = r2(Number(amountText) || 0);
+  const full = settle >= owed - 0.005;
+  const whtLeft = r2(billWht(bill) - st.payments.reduce((s, p) => s + p.wht, 0));
+  const wht = full ? Math.max(0, whtLeft) : r2((bill.subtotal * settle * (Number(bill.whtRate) || 0)) / 100 / payable);
+  const paid = r2(settle - wht);
+  const err = isLockedDate(date, locks) ? LOCKED_MSG : date < bill.date ? "วันที่จ่ายก่อนวันที่ใบแจ้งหนี้" : !(settle > 0) ? "กรอกยอดที่จ่าย" : settle > owed + 0.005 ? `ยอดจ่ายเกินยอดคงค้าง ${fmt(owed)} บาท` : "";
   const save = () => {
     if (err) return;
     const id = apPaymentsCol.nextId(docPrefix("PV", date));
     apPaymentsCol.upsert({ id, billId: bill.id, date, account, whtRate: bill.whtRate, wht, paid, note: note.trim() || undefined });
-    supplierBills.upsert({ ...bill, status: "paid", paidDate: date });
+    if (full) supplierBills.upsert({ ...bill, status: "paid", paidDate: date });
     onClose();
   };
   return (
@@ -252,14 +271,17 @@ function PayBill({ bill, onClose, locks }: { bill: SupplierBill; onClose: () => 
             <option value={A.cash}>1111 เงินสด</option>
           </select>
         </Labeled>
+        <Labeled label="ยอดชำระครั้งนี้ (ก่อนหัก ณ ที่จ่าย)" className="col-span-2">
+          <input className={numInput} inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
+        </Labeled>
         <Labeled label="หมายเหตุ / เลขที่เช็ค / อ้างอิงโอน" className="col-span-2">
           <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
         </Labeled>
       </div>
       <dl className="mt-4 grid grid-cols-3 gap-3 rounded-[10px] bg-raised px-4 py-3 text-[13px]">
         <div>
-          <dt className="text-ink-3">ยอดตามใบแจ้งหนี้</dt>
-          <dd><Num v={billTotal(bill)} /></dd>
+          <dt className="text-ink-3">คงค้างก่อนจ่าย</dt>
+          <dd><Num v={owed} /></dd>
         </div>
         <div>
           <dt className="text-ink-3">หัก ณ ที่จ่าย {bill.whtRate ? `${bill.whtRate}% ${whtForm(bill.supplierTaxId, bill.whtRate)}` : ""}</dt>
@@ -270,7 +292,9 @@ function PayBill({ bill, onClose, locks }: { bill: SupplierBill; onClose: () => 
           <dd><Num v={paid} strong /></dd>
         </div>
       </dl>
-      {isServiceBill(bill) && bill.vat > 0 && <p className="mt-3 text-[12px] text-ink-3">ค่าบริการ: ภาษีซื้อ {fmt(bill.vat)} บาท ใช้สิทธิในเดือนที่จ่ายเงิน (โอนจาก 1155 เข้า 1154) เมื่อได้รับใบกำกับภาษีจากผู้ขาย</p>}
+      {st.payments.length > 0 && <p className="mt-3 text-[12px] text-ink-3">จ่ายแล้ว {st.payments.length} ครั้ง: {st.payments.map((p) => `${p.id} ${thDateSlash(p.date)} ${fmt(p.paid + p.wht)}`).join(" · ")}</p>}
+      {((bill as BillX).retention ?? 0) > 0 && <p className="mt-3 text-[12px] text-ink-3">หักเงินประกันผลงาน {fmt((bill as BillX).retention ?? 0)} บาท ไว้ในบัญชี 2150 จนกว่าจะคืนให้ผู้รับเหมาช่วง</p>}
+      {isServiceBill(bill) && bill.vat > 0 && <p className="mt-3 text-[12px] text-ink-3">ค่าบริการ: ภาษีซื้อใช้สิทธิตามสัดส่วนเงินที่จ่ายในเดือนที่จ่าย (โอนจาก 1155 เข้า 1154) เมื่อได้รับใบกำกับภาษีจากผู้ขาย · ทั้งใบ {fmt(bill.vat)} บาท</p>}
     </Modal>
   );
 }

@@ -61,14 +61,92 @@ onTenantLoad(() => {
   })();
 });
 
+// ---------- offline outbox (live mode) ----------
+// Writes made while the phone has no signal are kept in localStorage and replayed
+// in order when the browser comes back online or the company is loaded again.
+
+type OutOp = { op: "up"; cid: string; kind: string; items: WithId[] } | { op: "del"; cid: string; kind: string; id: string };
+const OUTBOX = "asbuilt:outbox";
+const outboxListeners = new Set<() => void>();
+const readOutbox = (): OutOp[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(OUTBOX) ?? "[]") as OutOp[];
+  } catch {
+    return [];
+  }
+};
+const writeOutbox = (ops: OutOp[]) => {
+  try {
+    window.localStorage.setItem(OUTBOX, JSON.stringify(ops));
+  } catch {
+    // storage full: changes stay in memory for this session
+  }
+  outboxListeners.forEach((l) => l());
+};
+const enqueue = (op: OutOp) => writeOutbox([...readOutbox(), op]);
+/** number of changes waiting to sync (for the offline badge) */
+export const pendingSync = () => readOutbox().length;
+export function usePendingSync() {
+  return useSyncExternalStore(
+    (l) => {
+      outboxListeners.add(l);
+      return () => outboxListeners.delete(l);
+    },
+    pendingSync,
+    () => 0,
+  );
+}
+
+type Sb = NonNullable<ReturnType<typeof supabase>>;
+async function sendUp(sb: Sb, cid: string, kind: string, items: WithId[]) {
+  const rows = items.map((d) => ({ company_id: cid, kind, id: d.id, project_id: d.projectId ?? null, data: d }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await sb.from("records").upsert(rows.slice(i, i + 500));
+    if (error) throw new Error(error.message);
+  }
+}
+async function sendDel(sb: Sb, cid: string, kind: string, id: string) {
+  const { error } = await sb.from("records").delete().eq("company_id", cid).eq("kind", kind).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+const offline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+const isNetworkError = (e: unknown) => offline() || (e instanceof TypeError && /fetch|network/i.test(e.message));
+
+let flushing = false;
+export async function flushOutbox() {
+  const sb = supabase();
+  if (!sb || flushing || offline()) return;
+  flushing = true;
+  try {
+    while (readOutbox().length) {
+      const op = readOutbox()[0];
+      try {
+        if (op.op === "up") await sendUp(sb, op.cid, op.kind, op.items);
+        else await sendDel(sb, op.cid, op.kind, op.id);
+      } catch (e) {
+        if (isNetworkError(e)) break; // still offline: try again later
+        console.error(`outbox ${op.kind}:`, (e as Error).message); // rejected by the server: drop it
+      }
+      writeOutbox(readOutbox().slice(1));
+    }
+  } finally {
+    flushing = false;
+  }
+}
+if (typeof window !== "undefined") window.addEventListener("online", () => void flushOutbox());
+onTenantLoad(() => void flushOutbox());
+
 async function writeRemote(kind: string, items: WithId[]) {
   const sb = supabase();
   const cid = workspace().companyId;
   if (!sb || !cid) return;
-  const rows = items.map((d) => ({ company_id: cid, kind, id: d.id, project_id: d.projectId ?? null, data: d }));
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await sb.from("records").upsert(rows.slice(i, i + 500));
-    if (error) console.error(`records ${kind}:`, error.message);
+  if (offline() || pendingSync()) return enqueue({ op: "up", cid, kind, items }); // keep order behind queued ops
+  try {
+    await sendUp(sb, cid, kind, items);
+  } catch (e) {
+    if (isNetworkError(e)) enqueue({ op: "up", cid, kind, items });
+    else console.error(`records ${kind}:`, (e as Error).message);
   }
 }
 
@@ -76,8 +154,57 @@ async function deleteRemote(kind: string, id: string) {
   const sb = supabase();
   const cid = workspace().companyId;
   if (!sb || !cid) return;
-  const { error } = await sb.from("records").delete().eq("company_id", cid).eq("kind", kind).eq("id", id);
-  if (error) console.error(`records ${kind}:`, error.message);
+  if (offline() || pendingSync()) return enqueue({ op: "del", cid, kind, id });
+  try {
+    await sendDel(sb, cid, kind, id);
+  } catch (e) {
+    if (isNetworkError(e)) enqueue({ op: "del", cid, kind, id });
+    else console.error(`records ${kind}:`, (e as Error).message);
+  }
+}
+
+// ---------- audit trail ----------
+// Every change made through a collection is logged (who, when, what).
+// Read it with auditLog.use(); shown on /settings → ประวัติการแก้ไข.
+
+export type AuditEntry = { id: string; at: string; by: string; kind: string; action: "create" | "update" | "delete"; recId: string; label: string; projectId?: string };
+const AUDIT_KIND = "audit_log";
+const AUDIT_KEEP = 3000; // demo mode keeps the latest N in this browser
+let auditSeq = 0;
+let auditCol: Collection<AuditEntry> | null = null;
+let auditPending: AuditEntry[] = [];
+const auditFlushSoon = () =>
+  queueMicrotask(() => {
+    if (!auditCol || !auditPending.length) return;
+    const batch = auditPending;
+    auditPending = [];
+    auditCol.upsertMany(batch);
+  });
+const actorName = () => {
+  const w = workspace();
+  if (isLiveReady()) return w.displayName ?? w.email ?? "ผู้ใช้";
+  let role = "admin";
+  try {
+    role = window.localStorage.getItem("asbuilt:demoRole") ?? "admin";
+  } catch {
+    // no storage
+  }
+  return `ผู้ใช้เดโม (${role})`;
+};
+const labelOf = (x: Record<string, unknown>) => String(x.title ?? x.name ?? x.subject ?? x.description ?? x.task ?? x.id).slice(0, 120);
+function audit(kind: string, action: AuditEntry["action"], rec: WithId) {
+  if (kind === AUDIT_KIND || typeof window === "undefined") return;
+  auditPending.push({
+    id: `AUD-${Date.now().toString(36)}-${(auditSeq++).toString(36)}`,
+    at: new Date().toISOString(),
+    by: actorName(),
+    kind,
+    action,
+    recId: rec.id,
+    label: labelOf(rec as unknown as Record<string, unknown>),
+    projectId: rec.projectId,
+  });
+  auditFlushSoon();
 }
 
 export function createCollection<T extends WithId>(kind: string, seed: T[] | (() => T[])): Collection<T> {
@@ -158,6 +285,10 @@ export function createCollection<T extends WithId>(kind: string, seed: T[] | (()
     upsert: (item) => col.upsertMany([item]),
     upsertMany: (items) => {
       if (!items.length) return;
+      if (kind !== AUDIT_KIND) {
+        const before = new Set(all().map((x) => x.id));
+        for (const it of items) audit(kind, before.has(it.id) ? "update" : "create", it);
+      }
       if (isLiveReady()) {
         const map = new Map((live ?? []).map((x) => [x.id, x]));
         for (const it of items) map.set(it.id, it);
@@ -171,10 +302,17 @@ export function createCollection<T extends WithId>(kind: string, seed: T[] | (()
         l.up[it.id] = it;
         l.del = l.del.filter((d) => d !== it.id);
       }
+      if (kind === AUDIT_KIND) {
+        // cap the demo audit trail
+        const ids = Object.keys(l.up);
+        if (ids.length > AUDIT_KEEP) for (const old of ids.slice(0, ids.length - AUDIT_KEEP)) delete l.up[old];
+      }
       saveLocal();
       emit();
     },
     remove: (id) => {
+      const gone = all().find((x) => x.id === id);
+      if (gone) audit(kind, "delete", gone);
       if (isLiveReady()) {
         live = (live ?? []).filter((x) => x.id !== id);
         emit();
@@ -201,6 +339,9 @@ export function createCollection<T extends WithId>(kind: string, seed: T[] | (()
   seeds.set(kind, () => seedList() as WithId[]);
   return col;
 }
+
+auditCol = createCollection<AuditEntry>(AUDIT_KIND, []);
+export const auditLog = auditCol;
 
 /** Demo-mode helper: forget browser edits of every collection (used by "reset demo data"). */
 export function resetLocalCollections() {

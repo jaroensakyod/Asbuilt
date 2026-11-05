@@ -320,7 +320,7 @@ export const getHouseModel = (code: string) => houseModels.find((m) => m.code ==
 
 // ---------- team ----------
 
-export type Role = "admin" | "exec" | "sales" | "architect" | "engineer" | "pm" | "foreman" | "qc" | "technician" | "purchasing" | "accounting";
+export type Role = "admin" | "exec" | "sales" | "architect" | "engineer" | "pm" | "foreman" | "qc" | "technician" | "purchasing" | "accounting" | "qs" | "safety" | "interior" | "subcontractor";
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "ผู้ดูแลระบบ",
   exec: "ผู้บริหาร",
@@ -333,6 +333,10 @@ export const ROLE_LABEL: Record<Role, string> = {
   technician: "ช่างบริการ",
   purchasing: "จัดซื้อ",
   accounting: "บัญชี",
+  qs: "ประมาณราคา (QS)",
+  safety: "เจ้าหน้าที่ความปลอดภัย (จป.)",
+  interior: "มัณฑนากร",
+  subcontractor: "ผู้รับเหมาช่วง",
 };
 
 export type Member = { id: string; name: string; role: Role; phone: string; email: string; skill?: string; active: boolean; lastSeen: string };

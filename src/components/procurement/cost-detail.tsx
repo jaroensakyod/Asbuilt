@@ -12,7 +12,7 @@ import { Amt, DocLink, fmtM, POStatusPill, Section, td, th, useProcPerms, usePro
 import { UseBar, useCostCtx } from "./costs-view";
 import { SCurve } from "./s-curve";
 
-const SOURCE_LABEL: Record<CostEntry["source"], string> = { po: "วัสดุ", bill: "ใบแจ้งหนี้", labour: "ค่าแรง", petty: "เงินสดย่อย/ค่าดำเนินการ", subcontract: "ผู้รับเหมาช่วง" };
+const SOURCE_LABEL: Record<CostEntry["source"], string> = { po: "วัสดุ", bill: "ใบแจ้งหนี้", labour: "ค่าแรง", petty: "เงินสดย่อย/ค่าดำเนินการ", subcontract: "ผู้รับเหมาช่วง", plant: "เครื่องจักร", piecerate: "ค่าแรงเหมา" };
 
 export function CostDetail({ projectId }: { projectId: string }) {
   const hydrated = useHydrated();

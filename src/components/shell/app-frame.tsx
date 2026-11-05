@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LIVE } from "@/lib/supabase/env";
+import { ServiceWorker } from "./pwa";
 import { supabase } from "@/lib/supabase/client";
 import { bootWorkspace, onRemoteError, useWorkspace } from "@/lib/workspace";
 import { applyCompanySettings } from "@/app/team/team-store";
@@ -19,6 +20,9 @@ import { CommandPalette } from "./command-palette";
 
 const BARE = ["/login", "/signup", "/onboarding", "/invite", "/auth", "/reset-password", "/portal"];
 const isBare = (path: string) => BARE.some((p) => path === p || path.startsWith(p + "/"));
+// phone screens for the field (foreman, technician, crew): signed-in like the rest, but full-screen without the sidebar
+const PHONE = ["/m", "/offline"];
+const isPhone = (path: string) => PHONE.some((p) => path === p || path.startsWith(p + "/"));
 
 /**
  * App chrome + workspace gate.
@@ -55,7 +59,13 @@ export function AppFrame({ children }: { children: ReactNode }) {
     if (ws.status === "no-company") router.replace("/onboarding");
   }, [ws.status, bare, path, router]);
 
-  if (bare) return <>{children}</>;
+  if (bare)
+    return (
+      <>
+        <ServiceWorker />
+        {children}
+      </>
+    );
 
   if (LIVE && ws.status !== "ready") {
     return (
@@ -75,8 +85,18 @@ export function AppFrame({ children }: { children: ReactNode }) {
     );
   }
 
+  if (isPhone(path))
+    return (
+      <>
+        <ServiceWorker />
+        {denied ? <p className="px-6 py-16 text-center text-[14px] text-ink-2">บทบาท {me.roleLabel} ใช้หน้านี้ไม่ได้</p> : children}
+        <RemoteErrors />
+      </>
+    );
+
   return (
     <>
+      <ServiceWorker />
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="min-w-0 flex-1">

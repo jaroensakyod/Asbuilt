@@ -275,9 +275,41 @@ export function seedAttendance(): AttendanceSheet[] {
   for (const d of dateRange(addDays(TODAY, -ATTENDANCE_DAYS), addDays(TODAY, -1)))
     for (const p of ACTIVE_SITES) {
       const s = genSheet(p.id, d, emps);
-      if (s) out.push(s);
+      if (s) out.push(CLOCK_SITES.has(p.id) && d >= addDays(TODAY, -14) ? withClock(s, p, false) : s);
     }
+  // today: workers who already checked in on the phone time clock (no check-out yet)
+  for (const p of ACTIVE_SITES) {
+    if (!CLOCK_SITES.has(p.id)) continue;
+    const s = genSheet(p.id, TODAY, emps);
+    if (!s) continue;
+    const t = withClock(s, p, true);
+    out.push({ ...t, entries: t.entries.filter((e) => e.in).map((e) => ({ ...e, mark: "present" as DayMark, ot: 0 })) });
+  }
   return out;
+}
+
+/** sites that use the phone time clock in the demo (the rest key in sheets by hand) */
+const CLOCK_SITES = new Set(["HC-2025-03", "HC-2026-04", "HC-2026-03", "HC-2026-01"]);
+const hm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+/** Add GPS / QR check-in and check-out stamps consistent with the marks and OT of a generated sheet. */
+function withClock(s: AttendanceSheet, p: Project, todayOnly: boolean): AttendanceSheet {
+  const rnd = seeded(hash("clock" + s.id));
+  const qrSite = p.id === "HC-2025-03";
+  const entries = s.entries.map((e) => {
+    if (e.mark === "absent" || (todayOnly && rnd() < 0.25)) return e;
+    const outside = rnd() < 0.05;
+    const qr = qrSite && rnd() < 0.4;
+    const near = outside ? 0.004 : 0.0012;
+    const lat = (p.lat ?? 13.75) + (rnd() - 0.5) * near;
+    const lng = (p.lng ?? 100.5) + (rnd() - 0.5) * near;
+    const dist = Math.round(Math.hypot((lat - (p.lat ?? 13.75)) * 111000, (lng - (p.lng ?? 100.5)) * 108000));
+    const base = qr ? { method: "qr" as const, by: s.by } : { method: "gps" as const, lat, lng, acc: int(rnd, 6, 25), dist, inside: dist <= (p.id === "HC-2025-03" ? 150 : 300) };
+    const inMin = 7 * 60 + 30 + int(rnd, 0, 35);
+    const outMin = e.mark === "half" ? 12 * 60 + int(rnd, 0, 10) : 17 * 60 + e.ot * 60 + int(rnd, 0, 14);
+    return { ...e, in: { ...base, at: hm(inMin) }, out: todayOnly ? undefined : { ...base, at: hm(outMin) } };
+  });
+  return { ...s, entries };
 }
 
 // ---------- leave requests ----------

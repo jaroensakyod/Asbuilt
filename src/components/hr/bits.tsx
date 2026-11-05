@@ -40,12 +40,15 @@ const TABS = [
   { href: "/hr", label: "พนักงาน" },
   { href: "/hr/attendance", label: "ลงเวลา & การลา" },
   { href: "/hr/payroll", label: "เงินเดือน & ค่าแรง" },
+  { href: "/hr/crew", label: "ค่าแรงเหมา & เบิก" },
+  { href: "/hr/skills", label: "ทักษะ & ใบรับรอง" },
+  { href: "/hr/camps", label: "แคมป์คนงาน" },
 ];
 
 export function HrTabs() {
   const path = usePathname();
   return (
-    <nav aria-label="เมนูบุคคล" className="hr-noprint mb-6 flex gap-1 border-b border-line">
+    <nav aria-label="เมนูบุคคล" className="hr-noprint mb-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line">
       {TABS.map((t) => {
         const on = t.href === "/hr" ? path === "/hr" : path.startsWith(t.href);
         return (
@@ -53,7 +56,7 @@ export function HrTabs() {
             key={t.href}
             href={t.href}
             aria-current={on ? "page" : undefined}
-            className={cx("-mb-px border-b-2 px-3 pb-2.5 pt-1 text-[14px] transition-colors duration-150", on ? "border-ink text-ink" : "border-transparent text-ink-2 hover:text-ink")}
+            className={cx("-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-[14px] transition-colors duration-150", on ? "border-ink text-ink" : "border-transparent text-ink-2 hover:text-ink")}
           >
             {t.label}
           </Link>

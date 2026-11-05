@@ -3,7 +3,7 @@
 // then closed periods are replaced by their frozen snapshot, then JV numbers are attached from the register.
 // Every entry must balance; an unbalanced one is reported in `problems` and left out.
 // Pure: no React, no "@/" imports (shared biz shapes are type-only imports).
-import type { Installment, PayrollRun, SupplierBill } from "../biz";
+import type { PayrollRun, SupplierBill } from "../biz";
 import { A, type Account } from "./coa";
 import { accumAccount, accumulatedAt, depreciationSchedule } from "./assets";
 import { buildExpenseJournal, incomeTypeForRate } from "./ledger";
@@ -11,9 +11,12 @@ import { BOOKS_START, jvPrefix, monthEnd, periodOf, periodsBetween, r2, satang, 
 import { isJuristic, whtForm } from "./tax";
 import type {
   ApPayment,
+  ArCredit,
   ArDoc,
   ArInvoice,
   ArReceipt,
+  BillingItem,
+  BillX,
   Expense,
   FixedAsset,
   JournalEntry,
@@ -33,7 +36,8 @@ export type BooksInput = {
   today: string;
   accounts: Account[];
   projects: ProjectRef[];
-  installments: Installment[];
+  /** sales installments plus contract billing items (progress certificates, advance, retention release) */
+  installments: BillingItem[];
   arDocs: ArDoc[];
   bills: SupplierBill[];
   apPayments: ApPayment[];
@@ -96,15 +100,15 @@ function entry(source: Source, ref: string, date: string, memo: string, lines: J
   return { id: "", key: `${source}:${ref}`, date, period: periodOf(date), source, ref, memo, lines: tidy(lines), posted: true, ...extra };
 }
 
-// ---------- AR: invoices and receipts per installment ----------
+// ---------- AR: invoices, receipts and credit notes per billing item ----------
 
-/** The tax invoice / invoice of an installment: issued here, or reconstructed when invoiced elsewhere. */
-export function invoiceOf(inst: Installment, docs: ArDoc[], projects: ProjectRef[]): ArInvoice | undefined {
+/** The tax invoice / invoice of a billing item: issued here, or reconstructed when invoiced elsewhere. */
+export function invoiceOf(inst: BillingItem, docs: ArDoc[], projects: ProjectRef[]): ArInvoice | undefined {
   const own = docs.find((d): d is ArInvoice => d.kind === "invoice" && d.installmentId === inst.id);
   if (own) return own;
   if (!(inst.invoiceNo || inst.receiptNo || inst.paidDate || inst.status === "invoiced" || inst.status === "paid")) return undefined;
   const p = projects.find((x) => x.id === inst.projectId);
-  const date = inst.paidDate && inst.paidDate < inst.dueDate ? inst.paidDate : inst.dueDate;
+  const date = inst.invoiceDate ?? (inst.paidDate && inst.paidDate < inst.dueDate ? inst.paidDate : inst.dueDate);
   return {
     id: inst.invoiceNo || `(${inst.id})`,
     kind: "invoice",
@@ -112,75 +116,171 @@ export function invoiceOf(inst: Installment, docs: ArDoc[], projects: ProjectRef
     projectId: inst.projectId,
     date,
     dueDate: inst.dueDate,
-    customerName: p?.owner ?? inst.projectId,
-    customerAddress: p?.address,
+    customerName: inst.customerName ?? p?.owner ?? inst.projectId,
+    customerTaxId: inst.customerTaxId,
+    customerBranch: inst.customerBranch,
+    customerAddress: inst.customerAddress ?? p?.address,
     description: inst.title,
     amount: r2(inst.amount),
     vat: r2(inst.vat),
-    retention: 0,
+    retention: r2(inst.retention ?? 0),
     taxPoint: "receipt",
     synthetic: true,
+    origin: inst.origin,
+    advanceRecovery: inst.advanceRecovery,
+    releaseVat: inst.releaseVat,
   };
 }
-export function receiptOf(inst: Installment, docs: ArDoc[], inv: ArInvoice | undefined): ArReceipt | undefined {
-  const own = docs.find((d): d is ArReceipt => d.kind === "receipt" && d.installmentId === inst.id);
-  if (own) return own;
-  if (!inv || !(inst.status === "paid" || inst.receiptNo || inst.paidDate)) return undefined;
-  const due = r2(inv.amount + inv.vat - inv.retention);
-  return {
-    id: inst.receiptNo || `(${inst.id}-RC)`,
-    kind: "receipt",
-    installmentId: inst.id,
-    projectId: inst.projectId,
-    invoiceNo: inv.id,
-    date: inst.paidDate ?? inv.date,
-    account: A.bank,
-    whtRate: 0,
-    wht: 0,
-    received: due,
-    synthetic: true,
-  };
+/** Amount the customer owes on the invoice: total incl. VAT less retention withheld. */
+export const arAmount = (inv: ArInvoice) => r2(inv.amount + inv.vat - inv.retention);
+export const creditsOf = (inst: Pick<BillingItem, "id">, docs: ArDoc[]) =>
+  docs.filter((d): d is ArCredit => d.kind === "credit" && d.installmentId === inst.id).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+/** Receipts against the invoice, oldest first (several when paid in parts); reconstructed when paid elsewhere. */
+export function receiptsOf(inst: BillingItem, docs: ArDoc[], inv: ArInvoice | undefined): ArReceipt[] {
+  const own = docs.filter((d): d is ArReceipt => d.kind === "receipt" && d.installmentId === inst.id).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  if (own.length) return own;
+  if (!inv || !(inst.status === "paid" || inst.receiptNo || inst.paidDate)) return [];
+  const due = r2(arAmount(inv) - sum(creditsOf(inst, docs).map((c) => c.amount + c.vat)));
+  const wht = r2(inst.wht ?? 0);
+  return [
+    {
+      id: inst.receiptNo || `(${inst.id}-RC)`,
+      kind: "receipt",
+      installmentId: inst.id,
+      projectId: inst.projectId,
+      invoiceNo: inv.id,
+      date: inst.paidDate ?? inv.date,
+      account: A.bank,
+      whtRate: 0,
+      wht,
+      received: r2(due - wht),
+      synthetic: true,
+    },
+  ];
 }
+/** Latest receipt (kept for callers that show one receipt per item). */
+export const receiptOf = (inst: BillingItem, docs: ArDoc[], inv: ArInvoice | undefined): ArReceipt | undefined => receiptsOf(inst, docs, inv).at(-1);
+
+/** Invoice, receipts, credit notes and what is still owed on one billing item. */
+export function arStatus(inst: BillingItem, docs: ArDoc[], projects: ProjectRef[]) {
+  const inv = invoiceOf(inst, docs, projects);
+  if (!inv) return undefined;
+  const receipts = receiptsOf(inst, docs, inv);
+  const credits = creditsOf(inst, docs);
+  const settled = sum(receipts.map((r) => r.received + r.wht));
+  const credited = sum(credits.map((c) => c.amount + c.vat));
+  const outstanding = r2(arAmount(inv) - settled - credited);
+  return { inv, receipts, credits, settled, credited, outstanding, paid: outstanding <= 0.005 };
+}
+
 /** VAT on the part of the invoice actually collected now (retention VAT stays deferred until released). */
 export const collectedVat = (inv: ArInvoice) => (inv.retention > 0 && inv.amount > 0 ? r2((inv.vat * (inv.amount - inv.retention)) / inv.amount) : inv.vat);
+/** Output VAT that stays in 2136 on an invoice until its retention is released. */
+export const retentionVat = (inv: ArInvoice) => r2(inv.vat - collectedVat(inv));
 
-function arEntries(inst: Installment, inv: ArInvoice | undefined, rc: ArReceipt | undefined, opening: JournalLine[]): JournalEntry[] {
+const AR_CARRY = new Set<string>([A.ar, A.retention, A.outputVatDeferred, A.advance]);
+const AP_CARRY = new Set<string>([A.ap, A.inputVatDeferred, A.retentionPayable, A.deposit]);
+/** A document dated before the books start: keep its balance-sheet balances, everything else is in retained earnings. */
+const carryLines = (lines: JournalLine[], keep: Set<string>): JournalLine[] =>
+  lines.map((l) => (keep.has(l.account) ? { ...l } : { account: A.retained, debit: l.debit, credit: l.credit }));
+/** Net opening lines per account / project / cost code. */
+function netLines(lines: JournalLine[]): JournalLine[] {
+  const m = new Map<string, { l: JournalLine; v: number }>();
+  for (const l of lines) {
+    const k = `${l.account}|${l.projectId ?? ""}|${l.costCode ?? ""}`;
+    const x = m.get(k) ?? { l: { account: l.account, debit: 0, credit: 0, projectId: l.projectId, costCode: l.costCode }, v: 0 };
+    x.v += satang(l.debit) - satang(l.credit);
+    m.set(k, x);
+  }
+  const out: JournalLine[] = [];
+  for (const { l, v } of m.values()) {
+    if (!v) continue;
+    const line: JournalLine = { account: l.account, debit: v > 0 ? v / 100 : 0, credit: v < 0 ? -v / 100 : 0 };
+    if (l.projectId) line.projectId = l.projectId;
+    if (l.costCode) line.costCode = l.costCode;
+    out.push(line);
+  }
+  return out;
+}
+
+function arEntries(inst: BillingItem, inv: ArInvoice | undefined, receipts: ArReceipt[], credits: ArCredit[], opening: JournalLine[]): JournalEntry[] {
   if (!inv) return [];
-  const out: JournalEntry[] = [];
+  const all: JournalEntry[] = [];
   const tag = { projectId: inst.projectId };
-  const total = r2(inv.amount + inv.vat);
-  const arAmt = r2(total - inv.retention);
+  const origin = inv.origin ?? "installment";
+  const arAmt = arAmount(inv);
   const vatAcct = inv.taxPoint === "invoice" ? A.outputVat : A.outputVatDeferred;
   const party = { party: inv.customerName, taxId: inv.customerTaxId, branch: inv.customerBranch };
-  if (inv.date < BOOKS_START) {
-    // invoiced before the books start: still open at the start → part of the opening balances
-    if (!rc || rc.date >= BOOKS_START) {
-      opening.push(dr(A.ar, arAmt, tag), dr(A.retention, inv.retention, tag));
-      if (inv.taxPoint === "receipt") opening.push(cr(A.outputVatDeferred, inv.vat), cr(A.retained, r2(total - inv.vat)));
-      else opening.push(cr(A.retained, total));
+  const memo = `${inv.description} · ${inv.customerName}`;
+
+  let invLines: JournalLine[];
+  let invTax: TaxMeta[] | undefined;
+  if (origin === "retention") {
+    // release of retention withheld on earlier certificates: the receivable moves from 1135 to 1130
+    invLines = [dr(A.ar, arAmt, tag), cr(A.retention, r2(inv.amount + inv.vat), tag)];
+    const rv = r2(inv.releaseVat ?? 0);
+    if (inv.taxPoint === "invoice" && rv > 0) {
+      invLines.push(dr(A.outputVatDeferred, rv, tag), cr(A.outputVat, rv, tag));
+      invTax = [{ kind: "output", docNo: inv.id, date: inv.date, ...party, base: inv.amount, vat: rv }];
     }
+  } else if (origin === "advance") {
+    invLines = [dr(A.ar, arAmt, tag), dr(A.retention, inv.retention, tag), cr(A.advance, inv.amount, tag), cr(vatAcct, inv.vat, tag)];
   } else {
-    out.push(
-      entry("installment-invoice", inv.id, inv.date, `${inv.description} · ${inv.customerName}`, [dr(A.ar, arAmt, tag), dr(A.retention, inv.retention, tag), cr(A.revenue, inv.amount, tag), cr(vatAcct, inv.vat, tag)], {
-        tax: inv.taxPoint === "invoice" && inv.vat > 0 ? [{ kind: "output", docNo: inv.id, date: inv.date, ...party, base: inv.amount, vat: inv.vat }] : undefined,
-      }),
-    );
+    const adv = r2(inv.advanceRecovery ?? 0);
+    invLines = [dr(A.ar, arAmt, tag), dr(A.retention, inv.retention, tag), dr(A.advance, adv, tag), cr(A.revenue, r2(inv.amount + adv), tag), cr(vatAcct, inv.vat, tag)];
   }
-  if (rc && rc.date >= BOOKS_START) {
-    const lines = [dr(rc.account || A.bank, rc.received), dr(A.whtPrepaid, rc.wht), cr(A.ar, r2(rc.received + rc.wht), tag)];
-    let tax: TaxMeta[] | undefined;
-    if (inv.taxPoint === "receipt" && inv.vat > 0) {
-      const v = collectedVat(inv);
-      lines.push(dr(A.outputVatDeferred, v, tag), cr(A.outputVat, v, tag));
-      const base = r2(inv.amount - inv.retention);
-      tax = [{ kind: "output", docNo: rc.id, date: rc.date, ...party, base, vat: v }];
+  if (origin !== "retention" && inv.taxPoint === "invoice" && inv.vat > 0) invTax = [{ kind: "output", docNo: inv.id, date: inv.date, ...party, base: inv.amount, vat: inv.vat }];
+  all.push(entry("installment-invoice", inv.id, inv.date, memo, invLines, { tax: invTax }));
+
+  // receipts move the collected output VAT from 2136 to 2135 pro rata; the last one takes what is left
+  let arLeft = arAmt;
+  let pool = inv.taxPoint === "receipt" ? (origin === "retention" ? r2(inv.releaseVat ?? 0) : collectedVat(inv)) : 0;
+  let baseLeft = origin === "retention" ? inv.amount : r2(inv.amount - inv.retention);
+  type Ev = { date: string; id: string; rc?: ArReceipt; cn?: ArCredit };
+  const events: Ev[] = [...receipts.map((rc) => ({ date: rc.date, id: rc.id, rc })), ...credits.map((cn) => ({ date: cn.date, id: cn.id, cn }))].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  for (const ev of events) {
+    if (ev.rc) {
+      const rc = ev.rc;
+      const settle = r2(rc.received + rc.wht);
+      const full = settle >= arLeft - 0.005;
+      const share = arLeft > 0 ? Math.min(1, settle / arLeft) : 1;
+      const v = full ? pool : r2(pool * share);
+      const b = full ? baseLeft : r2(baseLeft * share);
+      const lines = [dr(rc.account || A.bank, rc.received), dr(A.whtPrepaid, rc.wht), cr(A.ar, settle, tag)];
+      let tax: TaxMeta[] | undefined;
+      if (v > 0) {
+        lines.push(dr(A.outputVatDeferred, v, tag), cr(A.outputVat, v, tag));
+        tax = [{ kind: "output", docNo: rc.id, date: rc.date, ...party, base: b, vat: v }];
+      }
+      all.push(
+        entry("receipt", rc.id, rc.date, `รับชำระ ${inv.id} · ${inv.customerName}`, lines, {
+          tax,
+          whtSuffered: rc.wht > 0 ? [{ docNo: rc.id, date: rc.date, payer: inv.customerName, base: b, amount: rc.wht }] : undefined,
+        }),
+      );
+      arLeft = r2(arLeft - settle);
+      pool = r2(pool - v);
+      baseLeft = r2(baseLeft - b);
+    } else if (ev.cn) {
+      // ใบลดหนี้: VAT still deferred is reversed from 2136; VAT already due is reversed from 2135 and reported (negative) in the sales VAT report
+      const cn = ev.cn;
+      const amount = r2(cn.amount),
+        vat = r2(cn.vat);
+      const fromDeferred = r2(Math.min(vat, pool));
+      const fromOutput = r2(vat - fromDeferred);
+      const debitAcct = origin === "advance" ? A.advance : origin === "retention" ? A.retention : A.revenue;
+      const lines = [dr(debitAcct, amount, tag), dr(A.outputVatDeferred, fromDeferred, tag), dr(A.outputVat, fromOutput, tag), cr(A.ar, r2(amount + vat), tag)];
+      const tax: TaxMeta[] | undefined = fromOutput > 0 ? [{ kind: "output", docNo: cn.id, date: cn.date, ...party, base: -r2(vat ? (amount * fromOutput) / vat : amount), vat: -fromOutput }] : undefined;
+      all.push(entry("credit-note", cn.id, cn.date, `ใบลดหนี้ ${inv.id} · ${cn.reason}`, lines, { tax }));
+      pool = r2(pool - fromDeferred);
+      arLeft = r2(arLeft - amount - vat);
+      baseLeft = r2(Math.max(0, baseLeft - amount));
     }
-    out.push(
-      entry("receipt", rc.id, rc.date, `รับชำระ ${inv.id} · ${inv.customerName}`, lines, {
-        tax,
-        whtSuffered: rc.wht > 0 ? [{ docNo: rc.id, date: rc.date, payer: inv.customerName, base: r2(inv.amount - inv.retention), amount: rc.wht }] : undefined,
-      }),
-    );
+  }
+  const out: JournalEntry[] = [];
+  for (const e of all) {
+    if (e.date < BOOKS_START) opening.push(...carryLines(e.lines, AR_CARRY));
+    else out.push(e);
   }
   return out;
 }
@@ -191,14 +291,29 @@ function arEntries(inst: Installment, inv: ArInvoice | undefined, rc: ArReceipt 
 export const isServiceBill = (b: SupplierBill) => (Number(b.whtRate) || 0) > 0;
 export const billTotal = (b: SupplierBill) => r2(b.subtotal + b.vat);
 export const billWht = (b: SupplierBill) => r2((b.subtotal * (Number(b.whtRate) || 0)) / 100);
-export const billDebitAccount = (b: SupplierBill) => (b.costCode ? `51${b.costCode}` : A.inventory);
+/** What we owe the supplier on the bill: total incl. VAT less retention we hold. */
+export const billPayable = (b: SupplierBill) => r2(billTotal(b) - ((b as BillX).retention ?? 0));
+export const billDebitAccount = (b: SupplierBill) => {
+  const k = (b as BillX).billKind;
+  return k === "advance" ? A.deposit : k === "retention-release" ? A.retentionPayable : b.costCode ? `51${b.costCode}` : A.inventory;
+};
 
-export function paymentOf(b: SupplierBill, pays: ApPayment[]): ApPayment | undefined {
-  const own = pays.find((p) => p.billId === b.id);
-  if (own) return own;
-  if (b.status !== "paid") return undefined;
+/** Payments against the bill, oldest first (several when paid in parts); reconstructed when paid elsewhere. */
+export function paymentsOf(b: SupplierBill, pays: ApPayment[]): ApPayment[] {
+  const own = pays.filter((p) => p.billId === b.id).sort((x, y) => x.date.localeCompare(y.date) || x.id.localeCompare(y.id));
+  if (own.length) return own;
+  if (b.status !== "paid") return [];
   const wht = billWht(b);
-  return { id: `(${b.id}-PV)`, billId: b.id, date: b.paidDate ?? b.dueDate, account: A.bank, whtRate: b.whtRate, wht, paid: r2(billTotal(b) - wht), synthetic: true };
+  return [{ id: `(${b.id}-PV)`, billId: b.id, date: b.paidDate ?? b.dueDate, account: A.bank, whtRate: b.whtRate, wht, paid: r2(billPayable(b) - wht), synthetic: true }];
+}
+/** First payment (kept for callers that show one voucher per bill). */
+export const paymentOf = (b: SupplierBill, pays: ApPayment[]): ApPayment | undefined => paymentsOf(b, pays)[0];
+/** Payments, amount settled (paid + withheld) and what is still owed on a bill. */
+export function billStatus(b: SupplierBill, pays: ApPayment[]) {
+  const payments = paymentsOf(b, pays);
+  const settled = sum(payments.map((p) => p.paid + p.wht));
+  const outstanding = r2(billPayable(b) - settled);
+  return { payments, settled, outstanding, paid: outstanding <= 0.005 };
 }
 
 const whtMeta = (key: string, form: WhtFormName, payee: string, taxId: string | undefined, base: number, rate: number, amount: number, incomeType: string, date: string, docNo: string): WhtMeta => ({
@@ -214,35 +329,52 @@ const whtMeta = (key: string, form: WhtFormName, payee: string, taxId: string | 
   docNo,
 });
 
-function apEntries(b: SupplierBill, pay: ApPayment | undefined, opening: JournalLine[]): JournalEntry[] {
-  const out: JournalEntry[] = [];
+function apEntries(b: SupplierBill, pays: ApPayment[], opening: JournalLine[]): JournalEntry[] {
+  const all: JournalEntry[] = [];
+  const x = b as BillX;
   const service = isServiceBill(b);
   const total = billTotal(b);
+  const ret = r2(x.retention ?? 0);
+  const adv = r2(x.advanceRecovery ?? 0);
+  const payable = r2(total - ret);
   const tag = { projectId: b.projectId, costCode: b.costCode };
   const party = { party: b.supplierName, taxId: b.supplierTaxId };
-  if (b.date < BOOKS_START) {
-    if (!pay || pay.date >= BOOKS_START) {
-      opening.push(cr(A.ap, total));
-      if (service) opening.push(dr(A.inputVatDeferred, b.vat), dr(A.retained, b.subtotal));
-      else opening.push(dr(A.retained, total));
-    }
-  } else {
-    out.push(
-      entry("supplier-bill", b.id, b.date, `${b.supplierName}${b.lines?.[0] ? " · " + b.lines[0].description : ""}`, [dr(billDebitAccount(b), b.subtotal, tag), dr(service ? A.inputVatDeferred : A.inputVat, b.vat), cr(A.ap, total)], {
-        tax: !service && b.vat > 0 ? [{ kind: "input", docNo: b.id, date: b.date, ...party, base: b.subtotal, vat: b.vat }] : undefined,
-      }),
-    );
-  }
-  if (pay && pay.date >= BOOKS_START) {
-    const lines = [dr(A.ap, total), cr(pay.account || A.bank, pay.paid), cr(A.whtPayable, pay.wht)];
-    if (service && b.vat > 0) lines.push(dr(A.inputVat, b.vat), cr(A.inputVatDeferred, b.vat));
+  all.push(
+    entry(
+      "supplier-bill",
+      b.id,
+      b.date,
+      `${b.supplierName}${b.lines?.[0] ? " · " + b.lines[0].description : ""}`,
+      [dr(billDebitAccount(b), r2(b.subtotal + adv), tag), cr(A.deposit, adv, { projectId: b.projectId }), dr(service ? A.inputVatDeferred : A.inputVat, b.vat), cr(A.ap, payable), cr(A.retentionPayable, ret, { projectId: b.projectId })],
+      { tax: !service && b.vat > 0 ? [{ kind: "input", docNo: b.id, date: b.date, ...party, base: b.subtotal, vat: b.vat }] : undefined },
+    ),
+  );
+  let left = payable;
+  let vatLeft = service ? r2(b.vat) : 0;
+  let baseLeft = r2(b.subtotal);
+  for (const pay of pays) {
+    const settle = r2(pay.paid + pay.wht);
+    const full = settle >= left - 0.005;
+    const share = left > 0 ? Math.min(1, settle / left) : 1;
+    const v = full ? vatLeft : r2(vatLeft * share);
+    const base = full ? baseLeft : r2(baseLeft * share);
+    const lines = [dr(A.ap, settle), cr(pay.account || A.bank, pay.paid), cr(A.whtPayable, pay.wht)];
+    if (v > 0) lines.push(dr(A.inputVat, v), cr(A.inputVatDeferred, v));
     const key = `bill-payment:${pay.id}`;
-    out.push(
+    all.push(
       entry("bill-payment", pay.id, pay.date, `จ่ายชำระ ${b.id} · ${b.supplierName}`, lines, {
-        tax: service && b.vat > 0 ? [{ kind: "input", docNo: b.id, date: pay.date, ...party, base: b.subtotal, vat: b.vat }] : undefined,
-        wht: pay.wht > 0 ? [whtMeta(key, whtForm(b.supplierTaxId, pay.whtRate || 3) as WhtFormName, b.supplierName, b.supplierTaxId, b.subtotal, pay.whtRate, pay.wht, incomeTypeForRate(pay.whtRate), pay.date, pay.id)] : undefined,
+        tax: v > 0 ? [{ kind: "input", docNo: b.id, date: pay.date, ...party, base, vat: v }] : undefined,
+        wht: pay.wht > 0 ? [whtMeta(key, whtForm(b.supplierTaxId, pay.whtRate || 3) as WhtFormName, b.supplierName, b.supplierTaxId, base, pay.whtRate, pay.wht, incomeTypeForRate(pay.whtRate), pay.date, pay.id)] : undefined,
       }),
     );
+    left = r2(left - settle);
+    vatLeft = r2(vatLeft - v);
+    baseLeft = r2(baseLeft - base);
+  }
+  const out: JournalEntry[] = [];
+  for (const e of all) {
+    if (e.date < BOOKS_START) opening.push(...carryLines(e.lines, AP_CARRY));
+    else out.push(e);
   }
   return out;
 }
@@ -441,7 +573,7 @@ function applyLocks(derived: JournalEntry[], locks: PeriodLock[], pick: (e: Jour
 
 // ---------- the books ----------
 
-const ORDER: Source[] = ["opening", "installment-invoice", "receipt", "supplier-bill", "bill-payment", "expense", "expense-payment", "asset", "asset-disposal", "payroll", "payroll-payment", "depreciation", "tax-payment", "manual", "closing"];
+const ORDER: Source[] = ["opening", "installment-invoice", "receipt", "credit-note", "supplier-bill", "bill-payment", "expense", "expense-payment", "asset", "asset-disposal", "payroll", "payroll-payment", "depreciation", "tax-payment", "manual", "closing"];
 export const sortEntries = (a: JournalEntry, b: JournalEntry) => a.date.localeCompare(b.date) || ORDER.indexOf(a.source) - ORDER.indexOf(b.source) || a.ref.localeCompare(b.ref);
 
 export function buildBooks(input: BooksInput): Books {
@@ -452,14 +584,15 @@ export function buildBooks(input: BooksInput): Books {
 
   for (const inst of input.installments) {
     const inv = invoiceOf(inst, input.arDocs, input.projects);
-    derived.push(...arEntries(inst, inv, receiptOf(inst, input.arDocs, inv), opening));
+    derived.push(...arEntries(inst, inv, receiptsOf(inst, input.arDocs, inv), creditsOf(inst, input.arDocs), opening));
   }
-  for (const b of input.bills) derived.push(...apEntries(b, paymentOf(b, input.apPayments), opening));
+  for (const b of input.bills) derived.push(...apEntries(b, paymentsOf(b, input.apPayments), opening));
   for (const run of input.payroll) derived.push(...payrollEntries(run));
   for (const x of input.expenses) derived.push(...expenseEntries(x, input.accounts));
   derived.push(...assetEntries(input.assets, input.today));
   for (const m of input.manual) derived.push(manualEntry(m));
-  if (opening.length) derived.push(entry("opening", "AR-AP", BOOKS_START, "ยอดยกมาลูกหนี้/เจ้าหนี้ที่ค้างอยู่ ณ วันเริ่มระบบ", opening));
+  const openLines = netLines(opening);
+  if (openLines.length) derived.push(entry("opening", "AR-AP", BOOKS_START, "ยอดยกมาลูกหนี้/เจ้าหนี้ที่ค้างอยู่ ณ วันเริ่มระบบ", openLines));
 
   const balanced = (list: JournalEntry[]) =>
     list.filter((e) => {

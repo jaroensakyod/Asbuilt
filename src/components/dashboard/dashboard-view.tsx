@@ -1,5 +1,7 @@
 "use client";
 
+import { surveys } from "@/lib/design/store";
+import { satisfactionScore } from "@/lib/design/satisfaction";
 // Client page: in live mode it renders the signed-in company's data.
 import Link from "next/link";
 import { ArrowRight, Box, MapPin, Plus, TriangleAlert, UserRound } from "lucide-react";
@@ -42,7 +44,6 @@ import {
 } from "@/lib/data";
 
 // Customer satisfaction comes from post-handover surveys, which are not in the demo data set
-const SURVEY = { score: 4.54, n: 26, prev: 4.47 };
 
 function chartData(): ChartPoint[] {
   const long = monthlySeries(35);
@@ -54,6 +55,13 @@ function chartData(): ChartPoint[] {
 
 export function DashboardView() {
   const year = Number(TODAY.slice(0, 4));
+  // customer satisfaction from portal surveys: last 12 months vs the 12 months before
+  const surveyRows = surveys.use();
+  const yearAgo = `${year - 1}${TODAY.slice(4)}`;
+  const twoYearsAgo = `${year - 2}${TODAY.slice(4)}`;
+  const cur = satisfactionScore(surveyRows, { since: yearAgo });
+  const prevScore = satisfactionScore(surveyRows.filter((r) => r.at >= twoYearsAgo && r.at < yearAgo));
+  const SURVEY = { score: cur.avg, n: cur.count, prev: prevScore.count ? prevScore.avg : cur.avg };
   const active = projects.filter(isActive);
   const planning = projects.filter((p) => p.status === "planning");
   const delivered = projects.filter((p) => p.status === "delivered");
@@ -214,8 +222,8 @@ export function DashboardView() {
           label="ความพึงพอใจลูกค้า"
           value={SURVEY.score.toFixed(2)}
           unit="/ 5"
-          change={{ text: `+${(SURVEY.score - SURVEY.prev).toFixed(2)}`, tone: "pos", dir: "up" }}
-          note={`จาก ${SURVEY.n} แบบสอบถามหลังส่งมอบ · ปีก่อน ${SURVEY.prev.toFixed(2)}`}
+          change={SURVEY.score >= SURVEY.prev ? { text: `+${(SURVEY.score - SURVEY.prev).toFixed(2)}`, tone: "pos", dir: "up" } : { text: (SURVEY.score - SURVEY.prev).toFixed(2), tone: "neg", dir: "down" }}
+          note={`จาก ${SURVEY.n} แบบประเมินจากพอร์ทัลลูกค้า 12 เดือน · ช่วงก่อนหน้า ${SURVEY.prev.toFixed(2)}`}
         >
           <Meter label="คะแนนเต็ม 5" value={(SURVEY.score / 5) * 100} />
         </Kpi>

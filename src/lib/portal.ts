@@ -120,7 +120,14 @@ export type PortalPayload = {
   project: Project;
   repairs: Repair[];
   installments: Installment[];
+  /** live mode: every portal record of the project (see PORTAL_KINDS); demo mode reads the collections instead */
+  records?: PortalRecord[];
 };
+export type PortalRecord = { kind: string; data: unknown };
+
+/** Record kinds the portal reads (portal_view) and may write (portal_write) */
+export const PORTAL_KINDS = ["installments", "portal_updates", "design_stages", "selections", "variations", "portal_messages", "satisfaction_surveys", "mood_boards", "interior_products"] as const;
+export const recordsOf = <T,>(records: PortalRecord[] | undefined, kind: string) => (records ?? []).filter((r) => r.kind === kind).map((r) => r.data as T);
 
 /** Live mode: read the portal through the RPC. Null = unknown or revoked token. */
 export async function fetchPortal(token: string): Promise<PortalPayload | null> {
@@ -140,6 +147,7 @@ export async function fetchPortal(token: string): Promise<PortalPayload | null> 
     project: d.project,
     repairs: d.repairs ?? [],
     installments: (d.records ?? []).filter((r) => r.kind === "installments").map((r) => r.data as Installment),
+    records: d.records ?? [],
   };
 }
 
@@ -184,3 +192,19 @@ export async function reportRepairLive(token: string, input: PortalRepairInput, 
   if (error) throw new Error(error.message);
   return String(data);
 }
+
+/**
+ * Live mode: a customer action in the portal (approve a design stage, choose a selection option,
+ * sign a variation, send a message, answer a survey, comment on a board). The security-definer RPC
+ * portal_write(token, kind, record) checks the token, the kind and the project, and keeps only the
+ * fields a customer may change (see the SQL in the design module report).
+ */
+export async function portalWrite(token: string, kind: (typeof PORTAL_KINDS)[number], record: { id: string } & Record<string, unknown>): Promise<void> {
+  const sb = supabase();
+  if (!sb) throw new Error("ยังไม่ได้เชื่อมต่อฐานข้อมูล");
+  const { error } = await sb.rpc("portal_write", { p_token: token, p_kind: kind, p_record: record });
+  if (error) throw new Error(error.message);
+}
+
+// customer satisfaction for the executive dashboard (pure helper)
+export { satisfactionScore, type SatisfactionScore } from "./design/satisfaction";

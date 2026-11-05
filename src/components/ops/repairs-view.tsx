@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Columns3, FileCheck2, List, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns3, FileCheck2, List, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { AssetTag, Card, cx, inputCls } from "@/components/ui";
 import { daysBetween, getProject, projects, REPAIR_STATUS_LABEL, SEVERITY_LABEL, slaText, SOURCE_LABEL, SYSTEM_LABEL, thDate, TODAY, WO_STATUS_LABEL, type RepairSource, type RepairStatus } from "@/lib/data";
 import { assetOf, modelForProject } from "@/lib/house";
@@ -11,6 +11,8 @@ import { createWorkOrderFromRepair, deleteRepair, setRepairStatus, useRepairs, u
 import { addDays } from "./seed";
 import { Btn, Empty, FilterField, I, IconBtn, KV, Modal, Pill, Segmented, Select, SEV_TONE, StatCard, type Tone } from "./bits";
 import { ASSIGNEES, RepairForm, type RepairPreset } from "./repair-form";
+import { requestSurvey, surveyRequests } from "@/lib/field/store";
+import { useMe } from "@/lib/use-me";
 
 const STATUSES: RepairStatus[] = ["open", "fixing", "waiting", "closed"];
 export const STATUS_TONE: Record<RepairStatus, Tone> = { open: "neutral", fixing: "warn", waiting: "accent", closed: "pos" };
@@ -363,6 +365,8 @@ function Kanban({ list, woOf, onOpen }: { list: OpsRepair[]; woOf: (id: string) 
 
 function RepairDrawer({ r, wo, onClose }: { r: OpsRepair; wo?: OpsWorkOrder; onClose: () => void }) {
   const router = useRouter();
+  const me = useMe();
+  const survey = surveyRequests.use().find((s) => s.repairId === r.id);
   const p = getProject(r.projectId);
   const asset = p ? assetOf(modelForProject(p), r.asset) : undefined;
   return (
@@ -386,6 +390,15 @@ function RepairDrawer({ r, wo, onClose }: { r: OpsRepair; wo?: OpsWorkOrder; onC
             ลบ
           </Btn>
           <span className="mr-auto" />
+          {r.status === "closed" &&
+            (survey ? (
+              <span className="text-[13px] text-ink-3">แบบประเมิน: {survey.status === "pending" ? "รอส่ง" : survey.status === "sent" ? "ส่งแล้ว" : "ตอบแล้ว"}</span>
+            ) : (
+              <Btn onClick={() => requestSurvey({ repairId: r.id, woId: wo?.id, projectId: r.projectId, by: me.name })}>
+                <Send {...I} />
+                ส่งแบบประเมิน
+              </Btn>
+            ))}
           {wo ? (
             <Btn primary onClick={() => router.push(`/work-orders/${wo.id}`)}>
               <FileCheck2 {...I} />

@@ -47,7 +47,7 @@ export function periodsBetween(from: string, to: string) {
  * The running number is appended by the collection (nextId), sequential per prefix and never reused
  * because issued documents are never deleted.
  */
-export const docPrefix = (kind: "IV" | "RC" | "PV" | "EX", iso: string) => `${kind}-${String(beYear(iso)).slice(2)}${iso.slice(5, 7)}-`;
+export const docPrefix = (kind: "IV" | "RC" | "PV" | "EX" | "CN", iso: string) => `${kind}-${String(beYear(iso)).slice(2)}${iso.slice(5, 7)}-`;
 /** Journal voucher prefix (Christian year, sequential per company per year): JV-2026- */
 export const jvPrefix = (iso: string) => `JV-${yearOf(iso)}-`;
 

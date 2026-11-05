@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Camera, Check, Minus, Pencil, Printer, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Minus, Pencil, Printer, RotateCcw, Trash2, X } from "lucide-react";
 import { AssetTag, Card, CardHead, cx, inputCls } from "@/components/ui";
 import { getProject, REPAIR_STATUS_LABEL, SEVERITY_LABEL, thDate, TODAY, type Severity } from "@/lib/data";
 import {
@@ -20,10 +20,17 @@ import {
 import { addDays, itemsFor, itemSystem, PASS_SCORE, projectAssets, scoreOf, type ItemResult } from "./seed";
 import { Btn, Empty, I, Meter, Pill, PrintStyle, SEV_TONE, SystemPill, useHydrated } from "./bits";
 import { DocHeader, DocRow, DocSection, Signatures } from "./doc";
+import { MediaField, MediaStrip } from "@/components/media/media-field";
+import type { MediaRef } from "@/lib/media";
 import { InspectionForm } from "./inspection-form";
 import { RESULT_LABEL, RESULT_TONE } from "./inspections-view";
 
 const R_LABEL: Record<ItemResult, string> = { pass: "ผ่าน", fail: "ไม่ผ่าน", na: "ไม่เกี่ยวข้อง" };
+
+/** item result with real photos; `photos` (count) is kept in sync for older records and reports */
+type ItemStateX = ItemState & { media?: MediaRef[] };
+/** photos recorded before real uploads existed: only a count, no files */
+const legacyPhotos = (st: ItemStateX) => Math.max(0, (st.photos ?? 0) - (st.media?.length ?? 0));
 
 export function InspectionDetail({ id }: { id: string }) {
   const all = useInspections();
@@ -46,7 +53,7 @@ function Body({ ins }: { ins: OpsInspection }) {
   const items = useMemo(() => itemsFor(ins), [ins]);
   const { assets } = useMemo(() => projectAssets(p), [p]);
   const locked = ins.result !== "scheduled";
-  const [results, setResults] = useState<Record<string, ItemState>>(() => resultsOf(ins));
+  const [results, setResults] = useState<Record<string, ItemStateX>>(() => resultsOf(ins));
   const [editOpen, setEditOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const live = scoreOf(results);
@@ -55,7 +62,7 @@ function Body({ ins }: { ins: OpsInspection }) {
   const linked = repairs.filter((r) => r.inspectionId === ins.id || ins.repairIds?.includes(r.id));
   const reinspections = useInspections().filter((x) => x.reinspectOf === ins.id);
 
-  const setItem = (itemId: string, patch: Partial<ItemState>) => {
+  const setItem = (itemId: string, patch: Partial<ItemStateX>) => {
     setSaved(false);
     setResults((x) => ({ ...x, [itemId]: { ...x[itemId], ...patch } }));
   };
@@ -194,23 +201,31 @@ function Body({ ins }: { ins: OpsInspection }) {
                         ))}
                       </div>
                     </div>
-                    {(!locked || st.note || st.photos) && (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    {(!locked || !!st.note || !!st.photos || !!st.media?.length) && (
+                      <div className="mt-2.5 flex flex-col gap-2">
                         {locked ? (
                           st.note && <p className="text-[13px] text-ink-2">หมายเหตุ {st.note}</p>
                         ) : (
                           <input value={st.note ?? ""} onChange={(e) => setItem(it.id, { note: e.target.value })} placeholder="หมายเหตุ / สิ่งที่พบ" className={cx(inputCls, "h-8 min-w-[240px] flex-1 text-[13px]")} />
                         )}
-                        {Array.from({ length: st.photos ?? 0 }, (_, k) => (
-                          <span key={k} className="flex h-8 w-11 items-center justify-center rounded-[6px] border border-line bg-raised font-mono text-[11px] text-ink-3" title="รูปถ่าย (ตัวอย่าง)">
-                            IMG{k + 1}
+                        {locked ? (
+                          <MediaStrip refs={st.media} />
+                        ) : (
+                          <MediaField
+                            value={st.media ?? []}
+                            onChange={(media) => setItem(it.id, { media, photos: media.length + legacyPhotos(st) })}
+                            label="รูปถ่าย"
+                            photosOnly
+                          />
+                        )}
+                        {legacyPhotos(st) > 0 && (
+                          <span className="flex flex-wrap gap-2">
+                            {Array.from({ length: legacyPhotos(st) }, (_, k) => (
+                              <span key={k} className="flex h-8 w-11 items-center justify-center rounded-[6px] border border-line bg-raised font-mono text-[11px] text-ink-3" title="รูปถ่ายจากระบบเดิม (ไม่มีไฟล์)">
+                                IMG{k + 1}
+                              </span>
+                            ))}
                           </span>
-                        ))}
-                        {!locked && (
-                          <Btn small onClick={() => setItem(it.id, { photos: (st.photos ?? 0) + 1 })} title="แนบรูปถ่าย">
-                            <Camera {...I} />
-                            รูป
-                          </Btn>
                         )}
                       </div>
                     )}
